@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# Pinned bootstrap dependencies.
+# shellcheck disable=SC2034
+# Pinned bootstrap dependencies. These variables are consumed by sourced files.
 
 RNB_NIX_VERSION="2.35.2"
 RNB_NIX_USER_CHROOT_VERSION="2.1.1"
