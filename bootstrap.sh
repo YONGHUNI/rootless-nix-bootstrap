@@ -22,7 +22,7 @@ config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/rootless-nix-bootstrap"
 share_dir="${XDG_DATA_HOME:-$HOME/.local/share}/rootless-nix-bootstrap"
 
 usage() {
-    cat <<USAGE
+    cat <<'USAGE'
 Usage: ./bootstrap.sh [options]
 
 Options:
@@ -32,7 +32,7 @@ Options:
   -h, --help                            Show this help
 
 The host OS is not managed or replaced. This installs only enough rootless Nix
-infrastructure to run project commands such as `nix develop`.
+infrastructure to run project commands such as "nix develop".
 USAGE
 }
 
@@ -152,6 +152,6 @@ printf 'Wrapper: %s/nix\n' "$bin_dir"
 printf 'Store/location: %s\n' "$store_root"
 printf '\nNext: cd <project> && nix develop\n'
 if ((path_changed)); then
-    printf 'Open a new Bash shell (or run: source ~/.bashrc) before using `nix` elsewhere.\n'
+    printf 'Open a new Bash shell (or run: source ~/.bashrc) before using nix elsewhere.\n'
 fi
 printf 'Diagnostics: rootless-nix-doctor\n'
