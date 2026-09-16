@@ -42,6 +42,8 @@ rnb_install_nix_in_chroot() {
     mkdir -p "$store_root"
     chmod 0755 "$store_root"
 
+    # HOME must expand in the inner Bash running inside the chroot.
+    # shellcheck disable=SC2016
     if "$chroot_bin" "$store_root" bash -c 'test -x "$HOME/.nix-profile/bin/nix" && "$HOME/.nix-profile/bin/nix" --version >/dev/null 2>&1'; then
         rnb_ok "Nix is already installed in the rootless store"
         return
@@ -51,6 +53,7 @@ rnb_install_nix_in_chroot() {
     "$chroot_bin" "$store_root" bash -c \
         'export NIX_INSTALLER_NO_MODIFY_PROFILE=1; curl --fail --location --proto "=https" --tlsv1.2 "https://releases.nixos.org/nix/nix-'"$nix_version"'/install" | sh -s -- --no-daemon --no-modify-profile'
 
+    # shellcheck disable=SC2016
     "$chroot_bin" "$store_root" bash -c 'test -x "$HOME/.nix-profile/bin/nix"' || \
         rnb_die "Nix installation completed but ~/.nix-profile/bin/nix was not found"
 }
