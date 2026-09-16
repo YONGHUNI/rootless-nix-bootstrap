@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+STATE_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/rootless-nix-bootstrap/state.env"
+[[ -r "$STATE_FILE" ]] || {
+    echo "rootless-nix-bootstrap: state file not found: $STATE_FILE" >&2
+    exit 127
+}
+# shellcheck disable=SC1090
+source "$STATE_FILE"
+
+case "$RNB_BACKEND" in
+    user-chroot)
+        exec "$RNB_BACKEND_BIN" "$RNB_STORE_ROOT" bash -c '
+            real_nix="$HOME/.nix-profile/bin/nix"
+            if [ ! -x "$real_nix" ]; then
+                echo "rootless-nix-bootstrap: Nix profile is missing inside the rootless store" >&2
+                exit 127
+            fi
+            exec "$real_nix" "$@"
+        ' rootless-nix "$@"
+        ;;
+    portable)
+        export NP_LOCATION="$RNB_STORE_ROOT"
+        exec "$RNB_BACKEND_BIN" nix "$@"
+        ;;
+    *)
+        echo "rootless-nix-bootstrap: unknown backend: $RNB_BACKEND" >&2
+        exit 2
+        ;;
+esac
