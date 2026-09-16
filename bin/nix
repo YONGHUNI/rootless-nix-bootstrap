@@ -11,6 +11,8 @@ source "$STATE_FILE"
 
 case "$RNB_BACKEND" in
     user-chroot)
+        # The single-quoted script is intentionally expanded by the inner Bash.
+        # shellcheck disable=SC2016
         exec "$RNB_BACKEND_BIN" "$RNB_STORE_ROOT" bash -c '
             real_nix="$HOME/.nix-profile/bin/nix"
             if [ ! -x "$real_nix" ]; then
