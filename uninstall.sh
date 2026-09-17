@@ -2,7 +2,14 @@
 set -Eeuo pipefail
 
 purge_store=0
-[[ "${1:-}" == "--purge-store" ]] && purge_store=1
+case "${1:-}" in
+    '') ;;
+    --purge-store) purge_store=1 ;;
+    *)
+        echo "Usage: ./uninstall.sh [--purge-store]" >&2
+        exit 2
+        ;;
+esac
 
 config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/rootless-nix-bootstrap"
 state_file="$config_dir/state.env"
@@ -16,6 +23,38 @@ if [[ -r "$state_file" ]]; then
 else
     echo "No managed rootless-nix-bootstrap state found."
     exit 0
+fi
+
+# Purge the managed store before deleting state/helper files. Nix store paths are
+# intentionally read-only, so make their directories owner-writable first.
+# If this fails, keep the bootstrap state intact so the purge can be retried.
+if ((purge_store)); then
+    if [[ "${RNB_MANAGED:-0}" != 1 ]]; then
+        echo "Refusing to purge: store is not marked as managed by this bootstrap." >&2
+        exit 1
+    fi
+
+    if [[ "$RNB_BACKEND" == user-chroot ]]; then
+        if [[ -d "$RNB_STORE_ROOT" ]]; then
+            echo "Preparing managed Nix store for removal: $RNB_STORE_ROOT"
+            if ! find "$RNB_STORE_ROOT" -type d -exec chmod u+w -- {} +; then
+                echo "Failed to make managed Nix store directories writable; state was preserved." >&2
+                exit 1
+            fi
+            if ! rm -rf -- "$RNB_STORE_ROOT"; then
+                echo "Failed to remove managed Nix store; state was preserved." >&2
+                exit 1
+            fi
+        fi
+
+        [[ "${RNB_PROFILE_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-profile"
+        [[ "${RNB_DEFEXPR_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-defexpr"
+        [[ "${RNB_CHANNELS_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-channels"
+        echo "Purged managed Nix store: $RNB_STORE_ROOT"
+    elif [[ "$RNB_BACKEND" == portable ]]; then
+        rm -rf -- "$RNB_STORE_ROOT/.nix-portable"
+        echo "Purged nix-portable state under: $RNB_STORE_ROOT/.nix-portable"
+    fi
 fi
 
 for f in "$bin_dir/nix" "$bin_dir/rootless-nix-doctor"; do
@@ -39,21 +78,6 @@ rm -rf "$config_dir" "$share_dir"
 
 echo "Removed rootless-nix-bootstrap wrappers and configuration."
 
-if ((purge_store)); then
-    if [[ "${RNB_MANAGED:-0}" != 1 ]]; then
-        echo "Refusing to purge: store is not marked as managed by this bootstrap." >&2
-        exit 1
-    fi
-    if [[ "$RNB_BACKEND" == user-chroot ]]; then
-        rm -rf -- "$RNB_STORE_ROOT"
-        [[ "${RNB_PROFILE_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-profile"
-        [[ "${RNB_DEFEXPR_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-defexpr"
-        [[ "${RNB_CHANNELS_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-channels"
-        echo "Purged managed Nix store: $RNB_STORE_ROOT"
-    elif [[ "$RNB_BACKEND" == portable ]]; then
-        rm -rf -- "$RNB_STORE_ROOT/.nix-portable"
-        echo "Purged nix-portable state under: $RNB_STORE_ROOT/.nix-portable"
-    fi
-else
+if ((!purge_store)); then
     echo "The Nix store was preserved. Re-run with --purge-store to remove it explicitly."
 fi
