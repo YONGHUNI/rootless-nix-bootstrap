@@ -82,22 +82,33 @@ rnb_install_nix_in_chroot() {
 }
 
 rnb_probe_nix_sandbox() {
-    local store_root=$1 arch=$2 candidate='' store_object='' probe_name probe_expr
+    local store_root=$1 arch=$2 candidate='' store_object='' builder_rel='' probe_name probe_expr
 
-    # The Nix binary tarball normally brings a Bash closure with it. Reuse that
-    # existing store object so probing the sandbox does not fetch nixpkgs or
-    # compile a real package.
+    # Reuse a shell that is already present in the freshly installed Nix
+    # closure so the sandbox probe itself does not fetch nixpkgs. Some Nix
+    # releases include Bash here, while a fresh install may contain only the
+    # BusyBox /bin/sh used by Nix's sandbox defaults.
     for candidate in "$store_root"/store/*bash*/bin/bash; do
         [[ -x "$candidate" ]] || continue
-        store_object="/nix/store/${candidate#"$store_root/store/"}"
-        store_object=${store_object%/bin/bash}
+        builder_rel='bin/bash'
         break
     done
 
-    [[ -n "$store_object" ]] || return 2
+    if [[ -z "$builder_rel" ]]; then
+        for candidate in "$store_root"/store/*busybox*/bin/sh; do
+            [[ -x "$candidate" ]] || continue
+            builder_rel='bin/sh'
+            break
+        done
+    fi
+
+    [[ -n "$builder_rel" ]] || return 2
+
+    store_object="/nix/store/${candidate#"$store_root/store/"}"
+    store_object=${store_object%/"$builder_rel"}
 
     probe_name="rnb-sandbox-probe-${RANDOM}-${RANDOM}"
-    probe_expr="let bash = builtins.storePath ${store_object}; in derivation { name = \"${probe_name}\"; system = \"${arch}-linux\"; builder = \"\${bash}/bin/bash\"; args = [ \"-c\" \"printf sandbox-ok > \$out\" ]; }"
+    probe_expr="let shell = builtins.storePath ${store_object}; in derivation { name = \"${probe_name}\"; system = \"${arch}-linux\"; builder = \"\${shell}/${builder_rel}\"; args = [ \"-c\" \"printf sandbox-ok > \$out\" ]; }"
 
     nix build --impure --no-link --option sandbox true --expr "$probe_expr" >/dev/null 2>&1
 }
