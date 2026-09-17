@@ -42,7 +42,10 @@ env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
 [[ ! -e "$home/.local/bin/rootless-nix-doctor" ]]
 [[ ! -e "$config/rootless-nix-bootstrap" ]]
 [[ ! -e "$home/.local/share/rootless-nix-bootstrap" ]]
-! grep -Fq 'rootless-nix-bootstrap PATH' "$home/.bashrc"
+if grep -Fq 'rootless-nix-bootstrap PATH' "$home/.bashrc"; then
+    echo 'managed PATH block was not removed' >&2
+    exit 1
+fi
 grep -qx 'before' "$home/.bashrc"
 grep -qx 'after' "$home/.bashrc"
 
