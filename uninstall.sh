@@ -88,10 +88,16 @@ if [[ -f "$HOME/.bashrc" ]]; then
     rm -f "$tmp"
 fi
 
-rm -rf "$config_dir" "$share_dir"
+rm -rf "$share_dir"
 
-echo "Removed rootless-nix-bootstrap wrappers and configuration."
-
-if ((!purge_store)); then
-    echo "The Nix store was preserved. Re-run with --purge-store to remove it explicitly."
+if ((purge_store)); then
+    rm -rf "$config_dir"
+    echo "Removed rootless-nix-bootstrap wrappers and configuration."
+else
+    # The store is deliberately preserved, so retain state.env as purge
+    # metadata. Besides allowing a later --purge-store, bootstrap also uses
+    # these original ownership flags after reinstall so it does not mistake
+    # bootstrap-created Nix profile/state artifacts for pre-existing user data.
+    echo "Removed rootless-nix-bootstrap wrappers and helper files."
+    echo "The Nix store and purge metadata were preserved. Re-run with --purge-store to remove them explicitly."
 fi
