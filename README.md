@@ -128,6 +128,8 @@ This project makes a normal project Nix workflow available; it does not make the
 
 For the preferred `nix-user-chroot` backend, bootstrap starts conservatively with `sandbox = false` and then performs a small real Nix build with `--option sandbox true`. If that build succeeds, the installed configuration is changed to `sandbox = true`. If the host or cluster policy prevents sandboxed builds, bootstrap keeps `sandbox = false` and continues rather than making rootless Nix unusable.
 
+When the sandbox is enabled, `sandbox-fallback = false` is also configured. A later sandbox failure therefore causes the Nix build to fail explicitly instead of silently continuing without sandbox isolation.
+
 When enabled, the Nix build sandbox improves build isolation by preventing accidental dependencies on undeclared host files and tools. It applies to Nix builds; it does not independently sandbox Pixi environments or make the host kernel, drivers, or scheduler reproducible.
 
 ## Diagnostics
@@ -136,7 +138,7 @@ When enabled, the Nix build sandbox improves build isolation by preventing accid
 rootless-nix-doctor
 ```
 
-The doctor checks the selected backend, Nix CLI, evaluator, flake support, user namespaces, the current Nix sandbox setting, and the NVIDIA driver bridge when relevant.
+The doctor checks the selected backend, Nix CLI, evaluator, flake support, user namespaces, the current Nix sandbox and fallback settings, and the NVIDIA driver bridge when relevant.
 
 ## Update
 
