@@ -50,6 +50,9 @@ if ((purge_store)); then
         [[ "${RNB_PROFILE_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-profile"
         [[ "${RNB_DEFEXPR_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-defexpr"
         [[ "${RNB_CHANNELS_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-channels"
+        if [[ "${RNB_NIX_STATE_PREEXISTED:-1}" == 0 && -n "${RNB_NIX_STATE_DIR:-}" ]]; then
+            rm -rf -- "$RNB_NIX_STATE_DIR"
+        fi
         echo "Purged managed Nix store: $RNB_STORE_ROOT"
     elif [[ "$RNB_BACKEND" == portable ]]; then
         portable_root="$RNB_STORE_ROOT/.nix-portable"
