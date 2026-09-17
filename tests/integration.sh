@@ -88,4 +88,14 @@ assert_installed
 [[ ! -e "$XDG_CONFIG_HOME/rootless-nix-bootstrap" ]]
 [[ ! -e "$preserved" ]]
 
+# A complete user-chroot purge must also remove every profile/state artifact
+# that was created by this bootstrap lifecycle. This catches ownership bugs
+# that can otherwise leave broken links to the deleted /nix/store behind.
+if [[ "$backend" == user-chroot ]]; then
+    [[ ! -e "$HOME/.nix-profile" && ! -L "$HOME/.nix-profile" ]]
+    [[ ! -e "$HOME/.nix-defexpr" && ! -L "$HOME/.nix-defexpr" ]]
+    [[ ! -e "$HOME/.nix-channels" && ! -L "$HOME/.nix-channels" ]]
+    [[ ! -e "${XDG_STATE_HOME:-$HOME/.local/state}/nix" ]]
+fi
+
 echo "Full integration lifecycle passed for backend: $backend"
