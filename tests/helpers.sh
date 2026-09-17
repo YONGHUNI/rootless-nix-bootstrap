@@ -3,7 +3,8 @@ set -Eeuo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 tmp_root=$(mktemp -d)
-trap 'chmod -R u+w "$tmp_root" 2>/dev/null || true; rm -rf "$tmp_root"' EXIT
+original_path=$PATH
+trap 'PATH="$original_path"; chmod -R u+w "$tmp_root" 2>/dev/null || true; rm -rf "$tmp_root"' EXIT
 
 # shellcheck source=../lib/common.sh
 source "$repo_root/lib/common.sh"
@@ -37,6 +38,7 @@ arch=$(rnb_detect_arch)
 PATH="/alpha:/beta:/gamma"
 rnb_path_contains /beta
 ! rnb_path_contains /bet
+PATH=$original_path
 
 # Filesystem detection should return a non-empty value for an existing path.
 fs_type=$(rnb_filesystem_type "$tmp_root")
@@ -56,12 +58,15 @@ EOF_LDCONFIG
 chmod +x "$mockbin/ldconfig"
 PATH="$mockbin:/usr/bin:/bin"
 [[ "$(rnb_find_library libcuda.so.1)" == "$libdir/libcuda.so.1" ]]
+PATH=$original_path
 
-# GPU configuration is a no-op when nvidia-smi is absent.
+# GPU configuration is a no-op when nvidia-smi is absent. A PATH containing
+# ordinary core utilities but no nvidia-smi exercises that branch.
 emptybin="$tmp_root/emptybin"
 mkdir -p "$emptybin"
 PATH="$emptybin:/usr/bin:/bin"
 rnb_configure_gpu_user_chroot "$tmp_root/no-gpu-store"
 [[ ! -e "$tmp_root/no-gpu-store/var/nix/opengl-driver/lib/libcuda.so.1" ]]
+PATH=$original_path
 
 echo 'Helper function tests passed.'
