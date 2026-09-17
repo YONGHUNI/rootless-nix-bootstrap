@@ -6,11 +6,11 @@ tmp_root=$(mktemp -d)
 original_path=$PATH
 trap 'PATH="$original_path"; chmod -R u+w "$tmp_root" 2>/dev/null || true; rm -rf "$tmp_root"' EXIT
 
-# shellcheck source=../lib/common.sh
+# shellcheck disable=SC1091
 source "$repo_root/lib/common.sh"
-# shellcheck source=../lib/detect.sh
+# shellcheck disable=SC1091
 source "$repo_root/lib/detect.sh"
-# shellcheck source=../lib/gpu.sh
+# shellcheck disable=SC1091
 source "$repo_root/lib/gpu.sh"
 
 # SHA-256 calculation and verification.
@@ -37,7 +37,10 @@ arch=$(rnb_detect_arch)
 # PATH membership must match whole path elements only.
 PATH="/alpha:/beta:/gamma"
 rnb_path_contains /beta
-! rnb_path_contains /bet
+if rnb_path_contains /bet; then
+    echo 'partial PATH element matched unexpectedly' >&2
+    exit 1
+fi
 PATH=$original_path
 
 # Filesystem detection should return a non-empty value for an existing path.
