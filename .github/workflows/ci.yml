@@ -13,5 +13,28 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Syntax smoke test
         run: bash tests/smoke.sh
+      - name: Command surface tests
+        run: bash tests/commands.sh
+      - name: Helper function tests
+        run: bash tests/helpers.sh
+      - name: Uninstall regression tests
+        run: bash tests/uninstall.sh
       - name: ShellCheck
-        run: shellcheck bootstrap.sh uninstall.sh doctor.sh versions.sh bin/nix lib/*.sh tests/smoke.sh
+        run: shellcheck bootstrap.sh uninstall.sh doctor.sh versions.sh bin/nix lib/*.sh tests/*.sh
+
+  integration:
+    name: integration (${{ matrix.backend }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        backend:
+          - user-chroot
+          - portable
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe user namespaces
+        if: matrix.backend == 'user-chroot'
+        run: unshare --user --pid true
+      - name: Full install/use/reinstall/uninstall lifecycle
+        run: bash tests/integration.sh "${{ matrix.backend }}"
