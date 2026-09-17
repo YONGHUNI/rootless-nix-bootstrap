@@ -74,7 +74,7 @@ rnb_probe_nix_sandbox() {
     [[ -n "$store_object" ]] || return 2
 
     probe_name="rnb-sandbox-probe-${RANDOM}-${RANDOM}"
-    probe_expr="let bash = builtins.storePath ${store_object}; in derivation { name = \"${probe_name}\"; system = \"${arch}-linux\"; builder = \"\${bash}/bin/bash\"; args = [ \"-c\" \"printf sandbox-ok > \\$out\" ]; }"
+    probe_expr="let bash = builtins.storePath ${store_object}; in derivation { name = \"${probe_name}\"; system = \"${arch}-linux\"; builder = \"\${bash}/bin/bash\"; args = [ \"-c\" \"printf sandbox-ok > \$out\" ]; }"
 
     nix build --impure --no-link --option sandbox true --expr "$probe_expr" >/dev/null 2>&1
 }
