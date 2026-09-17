@@ -147,6 +147,18 @@ rnb_info "Verifying installation"
 nix --version
 nix eval --expr '1 + 1' >/dev/null
 
+if [[ "$backend" == user-chroot ]]; then
+    rnb_info "Probing Nix build sandbox support"
+    if rnb_probe_nix_sandbox "$store_root" "$arch"; then
+        sed -i 's/^sandbox = false$/sandbox = true/' "$store_root/etc/nix/nix.conf"
+        printf 'RNB_SANDBOX_SUPPORTED=1\n' >> "$state_file"
+        rnb_ok "Nix build sandbox is supported and enabled"
+    else
+        printf 'RNB_SANDBOX_SUPPORTED=0\n' >> "$state_file"
+        rnb_warn "Nix build sandbox is unavailable; continuing with sandbox = false"
+    fi
+fi
+
 printf '\nInstalled rootless Nix backend: %s\n' "$backend"
 printf 'Wrapper: %s/nix\n' "$bin_dir"
 printf 'Store/location: %s\n' "$store_root"
