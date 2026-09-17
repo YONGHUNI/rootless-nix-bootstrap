@@ -12,6 +12,8 @@ source "$repo_root/lib/common.sh"
 source "$repo_root/lib/detect.sh"
 # shellcheck disable=SC1091
 source "$repo_root/lib/gpu.sh"
+# shellcheck disable=SC1091
+source "$repo_root/lib/user-chroot.sh"
 
 # SHA-256 calculation and verification.
 printf 'rootless-nix-bootstrap\n' > "$tmp_root/data"
@@ -71,5 +73,39 @@ PATH="$emptybin:/usr/bin:/bin"
 rnb_configure_gpu_user_chroot "$tmp_root/no-gpu-store"
 [[ ! -e "$tmp_root/no-gpu-store/var/nix/opengl-driver/lib/libcuda.so.1" ]]
 PATH=$original_path
+
+# The runtime probe must use the same parent filesystem as the requested store,
+# clean up its temporary root, and propagate backend success/failure.
+probe_parent="$tmp_root/probe-parent"
+mkdir -p "$probe_parent"
+probe_backend="$tmp_root/probe-backend"
+cat > "$probe_backend" <<'EOF_PROBE_OK'
+#!/usr/bin/env bash
+root=$1
+shift
+[[ -d "$root" ]] || exit 9
+exec "$@"
+EOF_PROBE_OK
+chmod +x "$probe_backend"
+rnb_user_chroot_runtime_works "$probe_backend" "$probe_parent/.nix"
+if compgen -G "$probe_parent/.rnb-probe.*" >/dev/null; then
+    echo 'runtime probe left a temporary root behind' >&2
+    exit 1
+fi
+
+cat > "$probe_backend" <<'EOF_PROBE_FAIL'
+#!/usr/bin/env bash
+exit 23
+EOF_PROBE_FAIL
+chmod +x "$probe_backend"
+set +e
+rnb_user_chroot_runtime_works "$probe_backend" "$probe_parent/.nix"
+rc=$?
+set -e
+[[ "$rc" -eq 23 ]]
+if compgen -G "$probe_parent/.rnb-probe.*" >/dev/null; then
+    echo 'failed runtime probe left a temporary root behind' >&2
+    exit 1
+fi
 
 echo 'Helper function tests passed.'
