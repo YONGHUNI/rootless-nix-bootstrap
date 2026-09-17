@@ -51,6 +51,8 @@ cd rootless-nix-bootstrap
 
 If `~/.local/bin` is not already on `PATH`, bootstrap adds one small managed block to `~/.bashrc`. It does not automatically enter a Nix shell at login.
 
+The upstream Nix installer may print a generic suggestion to source `~/.nix-profile/etc/profile.d/nix.sh`. Do **not** add that line when using this bootstrap; the wrapper intentionally exposes Nix only when the `nix` command is invoked.
+
 Then use Nix only where needed:
 
 ```bash
@@ -124,7 +126,9 @@ Whether a particular cluster permits user namespaces is site policy. Use `rootle
 
 This project makes a normal project Nix workflow available; it does not make the host OS reproducible. `flake.lock` still pins the Nix project inputs, and a project-specific lockfile such as `pixi.lock` can pin the application stack.
 
-Rootless single-user builds currently configure `sandbox = false`. The normal Nix build sandbox relies on privileges/build-user isolation that cannot be assumed on arbitrary rootless HPC hosts. This means local source builds have weaker isolation from the host than a standard multi-user Nix/NixOS build, even though flake inputs and store paths remain pinned. Binary-cache substitution and ordinary `nix develop` workflows retain their project dependency pinning.
+For the preferred `nix-user-chroot` backend, bootstrap starts conservatively with `sandbox = false` and then performs a small real Nix build with `--option sandbox true`. If that build succeeds, the installed configuration is changed to `sandbox = true`. If the host or cluster policy prevents sandboxed builds, bootstrap keeps `sandbox = false` and continues rather than making rootless Nix unusable.
+
+When enabled, the Nix build sandbox improves build isolation by preventing accidental dependencies on undeclared host files and tools. It applies to Nix builds; it does not independently sandbox Pixi environments or make the host kernel, drivers, or scheduler reproducible.
 
 ## Diagnostics
 
@@ -132,7 +136,7 @@ Rootless single-user builds currently configure `sandbox = false`. The normal Ni
 rootless-nix-doctor
 ```
 
-The doctor checks the selected backend, Nix CLI, evaluator, flake support, user namespaces, and NVIDIA driver bridge when relevant.
+The doctor checks the selected backend, Nix CLI, evaluator, flake support, user namespaces, the current Nix sandbox setting, and the NVIDIA driver bridge when relevant.
 
 ## Update
 
