@@ -6,7 +6,8 @@ tmp_root=$(mktemp -d)
 trap 'rm -rf "$tmp_root"' EXIT
 
 write_state() {
-    local home=$1 config_home=$2 store_root=$3 managed=${4:-1}
+    local home=$1 config_home=$2 store_root=$3 managed=${4:-1} nix_state_preexisted=${5:-0}
+    local nix_state_dir="$home/.local/state/nix"
     mkdir -p "$config_home/rootless-nix-bootstrap" "$home/.local/bin" "$home/.local/share/rootless-nix-bootstrap"
     cat > "$config_home/rootless-nix-bootstrap/state.env" <<EOF_STATE
 RNB_BACKEND=user-chroot
@@ -17,6 +18,8 @@ RNB_MANAGED=$managed
 RNB_PROFILE_PREEXISTED=0
 RNB_DEFEXPR_PREEXISTED=0
 RNB_CHANNELS_PREEXISTED=0
+RNB_NIX_STATE_DIR=$nix_state_dir
+RNB_NIX_STATE_PREEXISTED=$nix_state_preexisted
 EOF_STATE
     cp "$repo_root/bin/nix" "$home/.local/bin/nix"
     cp "$repo_root/doctor.sh" "$home/.local/bin/rootless-nix-doctor"
@@ -49,12 +52,16 @@ fi
 grep -qx 'before' "$home/.bashrc"
 grep -qx 'after' "$home/.bashrc"
 
-# Purge must remove a Nix-like read-only store and bootstrap-created profile links.
+# Purge must remove a Nix-like read-only store, bootstrap-created profile links,
+# and the Nix state directory when the bootstrap created it.
 home="$tmp_root/purge-home"
 config="$tmp_root/purge-config"
 store="$home/.nix"
-mkdir -p "$store/store/fake-package/bin" "$store/var/nix" "$home/.nix-profile" "$home/.nix-defexpr"
+nix_state="$home/.local/state/nix"
+mkdir -p "$store/store/fake-package/bin" "$store/var/nix" "$home/.nix-profile" "$home/.nix-defexpr" "$nix_state/profiles"
 touch "$store/store/fake-package/bin/tool" "$store/var/nix/db.sqlite" "$home/.nix-channels"
+ln -s profile-1-link "$nix_state/profiles/profile"
+ln -s /nix/store/fake-user-environment "$nix_state/profiles/profile-1-link"
 chmod -R a-w "$store/store/fake-package"
 write_state "$home" "$config" "$store"
 env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh" --purge-store
@@ -62,8 +69,20 @@ env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh" --purge-sto
 [[ ! -e "$home/.nix-profile" ]]
 [[ ! -e "$home/.nix-defexpr" ]]
 [[ ! -e "$home/.nix-channels" ]]
+[[ ! -e "$nix_state" ]]
 [[ ! -e "$config/rootless-nix-bootstrap" ]]
 [[ ! -e "$home/.local/bin/nix" ]]
+
+# A pre-existing Nix state directory must be preserved.
+home="$tmp_root/preexisting-state-home"
+config="$tmp_root/preexisting-state-config"
+store="$home/.nix"
+nix_state="$home/.local/state/nix"
+mkdir -p "$store/store/fake-package" "$nix_state"
+touch "$nix_state/keep-me"
+write_state "$home" "$config" "$store" 1 1
+env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh" --purge-store
+[[ -e "$nix_state/keep-me" ]]
 
 # Purge must refuse stores that are not explicitly marked as managed.
 home="$tmp_root/unmanaged-home"
