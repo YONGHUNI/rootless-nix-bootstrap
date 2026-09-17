@@ -20,6 +20,7 @@ store_root="${RNB_STORE_ROOT:-$HOME/.nix}"
 bin_dir="${RNB_BIN_DIR:-$HOME/.local/bin}"
 config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/rootless-nix-bootstrap"
 share_dir="${XDG_DATA_HOME:-$HOME/.local/share}/rootless-nix-bootstrap"
+nix_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/nix"
 
 usage() {
     cat <<'USAGE'
@@ -91,13 +92,15 @@ mkdir -p "$bin_dir" "$config_dir" "$share_dir/bin" "$store_root"
 store_root=$(cd "$store_root" && pwd -P)
 state_file="$config_dir/state.env"
 
-# These flags describe whether the upstream Nix profile artifacts existed
+# These flags describe whether upstream Nix profile/state artifacts existed
 # before this bootstrap first managed the installation. Preserve that original
-# ownership information across idempotent bootstrap reruns instead of treating
-# files created by the first run as user-preexisting files on later runs.
+# ownership information across idempotent reruns instead of treating files
+# created by the first run as user-preexisting files on later runs.
 profile_preexisted=''
 defexpr_preexisted=''
 channels_preexisted=''
+nix_state_preexisted=''
+managed_nix_state_dir=''
 if [[ -r "$state_file" ]]; then
     # shellcheck disable=SC1090
     source "$state_file"
@@ -105,6 +108,8 @@ if [[ -r "$state_file" ]]; then
         case "${RNB_PROFILE_PREEXISTED:-}" in 0|1) profile_preexisted=$RNB_PROFILE_PREEXISTED ;; esac
         case "${RNB_DEFEXPR_PREEXISTED:-}" in 0|1) defexpr_preexisted=$RNB_DEFEXPR_PREEXISTED ;; esac
         case "${RNB_CHANNELS_PREEXISTED:-}" in 0|1) channels_preexisted=$RNB_CHANNELS_PREEXISTED ;; esac
+        case "${RNB_NIX_STATE_PREEXISTED:-}" in 0|1) nix_state_preexisted=$RNB_NIX_STATE_PREEXISTED ;; esac
+        [[ -n "${RNB_NIX_STATE_DIR:-}" ]] && managed_nix_state_dir=$RNB_NIX_STATE_DIR
     fi
 fi
 
@@ -119,6 +124,13 @@ fi
 if [[ -z "$channels_preexisted" ]]; then
     channels_preexisted=0
     [[ -e "$HOME/.nix-channels" || -L "$HOME/.nix-channels" ]] && channels_preexisted=1
+fi
+if [[ -z "$managed_nix_state_dir" ]]; then
+    managed_nix_state_dir=$nix_state_dir
+fi
+if [[ -z "$nix_state_preexisted" ]]; then
+    nix_state_preexisted=0
+    [[ -e "$managed_nix_state_dir" || -L "$managed_nix_state_dir" ]] && nix_state_preexisted=1
 fi
 
 case "$backend" in
@@ -149,8 +161,8 @@ case "$backend" in
 esac
 
 rnb_write_state "$state_file" "$backend" "$store_root" "$backend_bin" "$bin_dir"
-printf 'RNB_PROFILE_PREEXISTED=%q\nRNB_DEFEXPR_PREEXISTED=%q\nRNB_CHANNELS_PREEXISTED=%q\n' \
-    "$profile_preexisted" "$defexpr_preexisted" "$channels_preexisted" >> "$state_file"
+printf 'RNB_PROFILE_PREEXISTED=%q\nRNB_DEFEXPR_PREEXISTED=%q\nRNB_CHANNELS_PREEXISTED=%q\nRNB_NIX_STATE_DIR=%q\nRNB_NIX_STATE_PREEXISTED=%q\n' \
+    "$profile_preexisted" "$defexpr_preexisted" "$channels_preexisted" "$managed_nix_state_dir" "$nix_state_preexisted" >> "$state_file"
 install -m 0755 "$REPO_ROOT/bin/nix" "$bin_dir/nix"
 install -m 0755 "$REPO_ROOT/doctor.sh" "$bin_dir/rootless-nix-doctor"
 
