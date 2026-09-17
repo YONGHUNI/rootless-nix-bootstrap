@@ -130,17 +130,20 @@ run_capture env HOME="$wrapper_home" XDG_CONFIG_HOME="$wrapper_config" \
 assert_status 0
 assert_contains 'fake-nix:develop -c python analysis.py'
 
-# nix wrapper: portable backend forwards commands and exports NP_LOCATION.
+# nix wrapper: portable backend forwards commands, exports NP_LOCATION, and
+# reuses host Git instead of letting nix-portable bootstrap its own copy.
 portable_backend="$tmp_root/fake-portable"
 cat > "$portable_backend" <<'EOF_PORTABLE'
 #!/usr/bin/env bash
-printf 'location=%s args=%s\n' "${NP_LOCATION:-}" "$*"
+printf 'location=%s git=%s args=%s\n' "${NP_LOCATION:-}" "${NP_GIT:-}" "$*"
 EOF_PORTABLE
 chmod +x "$portable_backend"
 make_state "$wrapper_config" portable "$wrapper_home/portable-root" "$portable_backend" "$wrapper_home/bin"
 run_capture env HOME="$wrapper_home" XDG_CONFIG_HOME="$wrapper_config" "$repo_root/bin/nix" build .#default
 assert_status 0
-assert_contains "location=$wrapper_home/portable-root args=nix build .#default"
+assert_contains "location=$wrapper_home/portable-root"
+assert_contains "git=$(command -v git)"
+assert_contains 'args=nix build .#default'
 
 # nix wrapper: unknown backend is rejected.
 make_state "$wrapper_config" broken "$wrapper_home/store" "$user_backend" "$wrapper_home/bin"
