@@ -32,7 +32,9 @@ after
 EOF_BASHRC
 }
 
-# Regular uninstall removes wrappers/configuration/PATH block but preserves store.
+# Regular uninstall removes wrappers/helper files/PATH block but preserves both
+# the store and state.env so a later purge or reinstall retains original
+# ownership metadata.
 home="$tmp_root/preserve-home"
 config="$tmp_root/preserve-config"
 store="$home/.nix"
@@ -43,14 +45,28 @@ env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
 [[ -d "$store" ]]
 [[ ! -e "$home/.local/bin/nix" ]]
 [[ ! -e "$home/.local/bin/rootless-nix-doctor" ]]
-[[ ! -e "$config/rootless-nix-bootstrap" ]]
+[[ -r "$config/rootless-nix-bootstrap/state.env" ]]
 [[ ! -e "$home/.local/share/rootless-nix-bootstrap" ]]
+# Confirm that the preserved metadata still identifies bootstrap-owned artifacts.
+# shellcheck disable=SC1090
+source "$config/rootless-nix-bootstrap/state.env"
+[[ "$RNB_MANAGED" == 1 ]]
+[[ "$RNB_PROFILE_PREEXISTED" == 0 ]]
+[[ "$RNB_DEFEXPR_PREEXISTED" == 0 ]]
+[[ "$RNB_CHANNELS_PREEXISTED" == 0 ]]
+[[ "$RNB_NIX_STATE_PREEXISTED" == 0 ]]
 if grep -Fq 'rootless-nix-bootstrap PATH' "$home/.bashrc"; then
     echo 'managed PATH block was not removed' >&2
     exit 1
 fi
 grep -qx 'before' "$home/.bashrc"
 grep -qx 'after' "$home/.bashrc"
+
+# A later purge must still work using the metadata preserved by ordinary
+# uninstall, rather than requiring a reinstall first.
+env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh" --purge-store
+[[ ! -e "$store" ]]
+[[ ! -e "$config/rootless-nix-bootstrap" ]]
 
 # Purge must remove a Nix-like read-only store, bootstrap-created profile links,
 # and the Nix state directory when the bootstrap created it.

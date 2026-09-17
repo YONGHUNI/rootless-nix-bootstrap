@@ -66,8 +66,9 @@ fi
 bootstrap
 assert_installed
 
-# Ordinary uninstall must remove command/configuration files but preserve the
-# backend's expensive store/state payload.
+# Ordinary uninstall must remove commands/helper files while preserving both
+# the expensive backend payload and the minimal state needed for a later purge
+# or ownership-aware reinstall.
 case "$backend" in
     user-chroot) preserved="$HOME/.nix" ;;
     portable) preserved="$HOME/.nix-portable" ;;
@@ -76,9 +77,11 @@ esac
 "$repo_root/uninstall.sh"
 [[ -e "$preserved" ]]
 [[ ! -e "$bin_dir/nix" ]]
-[[ ! -e "$XDG_CONFIG_HOME/rootless-nix-bootstrap" ]]
+[[ ! -e "$XDG_DATA_HOME/rootless-nix-bootstrap" ]]
+[[ -r "$XDG_CONFIG_HOME/rootless-nix-bootstrap/state.env" ]]
 
-# Reinstall must reuse the preserved backend payload and become healthy again.
+# Reinstall must reuse the preserved backend payload and original ownership
+# metadata instead of reclassifying bootstrap-created Nix artifacts.
 bootstrap
 assert_installed
 
