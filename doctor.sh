@@ -56,7 +56,13 @@ if [[ "$RNB_BACKEND" == user-chroot ]]; then
     else
         check_warn "unprivileged user namespace probe fails outside the wrapper"
     fi
-    check_warn "Nix build sandbox is disabled for this rootless single-user installation"
+
+    sandbox_setting=$(nix config show 2>/dev/null | awk -F ' = ' '$1 == "sandbox" { print $2; exit }')
+    case "$sandbox_setting" in
+        true) check_ok "Nix build sandbox enabled" ;;
+        false) check_warn "Nix build sandbox disabled on this host" ;;
+        *) check_warn "Could not determine Nix build sandbox setting" ;;
+    esac
 fi
 
 if command -v nvidia-smi >/dev/null 2>&1; then
