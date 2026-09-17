@@ -48,7 +48,9 @@ env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
 [[ -r "$config/rootless-nix-bootstrap/state.env" ]]
 [[ ! -e "$home/.local/share/rootless-nix-bootstrap" ]]
 # Confirm that the preserved metadata still identifies bootstrap-owned artifacts.
-# shellcheck disable=SC1090
+# This state file is generated dynamically by the test, so ShellCheck cannot
+# follow it during static analysis.
+# shellcheck disable=SC1090,SC1091
 source "$config/rootless-nix-bootstrap/state.env"
 [[ "$RNB_MANAGED" == 1 ]]
 [[ "$RNB_PROFILE_PREEXISTED" == 0 ]]
