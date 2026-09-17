@@ -100,6 +100,11 @@ channels_preexisted=0
 case "$backend" in
     user-chroot)
         backend_bin=$(rnb_install_user_chroot_binary "$arch" "$share_dir/bin" "$RNB_NIX_USER_CHROOT_VERSION")
+        rnb_info "Probing nix-user-chroot runtime support"
+        if ! rnb_user_chroot_runtime_works "$backend_bin" "$store_root"; then
+            rnb_die "nix-user-chroot runtime probe failed. User namespaces are available, but the backend could not initialize. The host may restrict required mount or namespace operations. Try: ./bootstrap.sh --backend portable"
+        fi
+        rnb_ok "nix-user-chroot runtime probe succeeded"
         rnb_install_nix_in_chroot "$backend_bin" "$store_root" "$RNB_NIX_VERSION"
         mkdir -p "$store_root/etc/nix"
         install -m 0644 "$REPO_ROOT/config/nix.conf" "$store_root/etc/nix/nix.conf"
