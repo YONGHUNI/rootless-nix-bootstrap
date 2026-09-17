@@ -38,6 +38,7 @@ EOF_BASHRC
 home="$tmp_root/preserve-home"
 config="$tmp_root/preserve-config"
 store="$home/.nix"
+state_file="$config/rootless-nix-bootstrap/state.env"
 mkdir -p "$store/store/fake-package/bin"
 touch "$store/store/fake-package/bin/tool"
 write_state "$home" "$config" "$store"
@@ -45,18 +46,15 @@ env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
 [[ -d "$store" ]]
 [[ ! -e "$home/.local/bin/nix" ]]
 [[ ! -e "$home/.local/bin/rootless-nix-doctor" ]]
-[[ -r "$config/rootless-nix-bootstrap/state.env" ]]
+[[ -r "$state_file" ]]
 [[ ! -e "$home/.local/share/rootless-nix-bootstrap" ]]
-# Confirm that the preserved metadata still identifies bootstrap-owned artifacts.
-# This state file is generated dynamically by the test, so ShellCheck cannot
-# follow it during static analysis.
-# shellcheck disable=SC1090,SC1091
-source "$config/rootless-nix-bootstrap/state.env"
-[[ "$RNB_MANAGED" == 1 ]]
-[[ "$RNB_PROFILE_PREEXISTED" == 0 ]]
-[[ "$RNB_DEFEXPR_PREEXISTED" == 0 ]]
-[[ "$RNB_CHANNELS_PREEXISTED" == 0 ]]
-[[ "$RNB_NIX_STATE_PREEXISTED" == 0 ]]
+# Confirm that the preserved metadata still identifies bootstrap-owned artifacts
+# without executing the generated state file as shell code.
+grep -qx 'RNB_MANAGED=1' "$state_file"
+grep -qx 'RNB_PROFILE_PREEXISTED=0' "$state_file"
+grep -qx 'RNB_DEFEXPR_PREEXISTED=0' "$state_file"
+grep -qx 'RNB_CHANNELS_PREEXISTED=0' "$state_file"
+grep -qx 'RNB_NIX_STATE_PREEXISTED=0' "$state_file"
 if grep -Fq 'rootless-nix-bootstrap PATH' "$home/.bashrc"; then
     echo 'managed PATH block was not removed' >&2
     exit 1
