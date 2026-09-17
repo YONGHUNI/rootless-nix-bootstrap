@@ -57,3 +57,24 @@ rnb_install_nix_in_chroot() {
     "$chroot_bin" "$store_root" bash -c 'test -x "$HOME/.nix-profile/bin/nix"' || \
         rnb_die "Nix installation completed but ~/.nix-profile/bin/nix was not found"
 }
+
+rnb_probe_nix_sandbox() {
+    local store_root=$1 arch=$2 candidate='' store_object='' probe_name probe_expr
+
+    # The Nix binary tarball normally brings a Bash closure with it. Reuse that
+    # existing store object so probing the sandbox does not fetch nixpkgs or
+    # compile a real package.
+    for candidate in "$store_root"/store/*bash*/bin/bash; do
+        [[ -x "$candidate" ]] || continue
+        store_object="/nix/store/${candidate#"$store_root/store/"}"
+        store_object=${store_object%/bin/bash}
+        break
+    done
+
+    [[ -n "$store_object" ]] || return 2
+
+    probe_name="rnb-sandbox-probe-${RANDOM}-${RANDOM}"
+    probe_expr="let bash = builtins.storePath ${store_object}; in derivation { name = \"${probe_name}\"; system = \"${arch}-linux\"; builder = \"\${bash}/bin/bash\"; args = [ \"-c\" \"printf sandbox-ok > \\$out\" ]; }"
+
+    nix build --impure --no-link --option sandbox true --expr "$probe_expr" >/dev/null 2>&1
+}
