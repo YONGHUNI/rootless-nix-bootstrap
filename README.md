@@ -102,6 +102,8 @@ The current portable fallback is experimental. Its released bundle is older than
 
 When `nvidia-smi` is present, the `nix-user-chroot` backend links host `libcuda.so.1` (and `libnvidia-ml.so.1` when available) into the driver-library bridge expected by Nix software at `/run/opengl-driver/lib`.
 
+For the `nix-user-chroot` backend, the `nix` wrapper adds that bridge to `LD_LIBRARY_PATH` only inside the wrapper process and its descendants when the bridge exists. It does not modify the login shell globally. This lets tools launched through workflows such as `nix develop` discover the host NVIDIA driver while keeping host-driver integration separate from project dependencies.
+
 The bootstrap does **not** install CUDA Toolkit, cuDNN, JAX, PyTorch, or other research dependencies. Those belong in the project flake/Pixi environment. The NVIDIA kernel driver remains a host responsibility.
 
 ## Slurm / HPC
