@@ -24,6 +24,13 @@ case "$RNB_BACKEND" in
         ;;
     portable)
         export NP_LOCATION="$RNB_STORE_ROOT"
+        # nix-portable otherwise bootstraps its own Git on first use. Reuse a
+        # host Git when available, which avoids an unnecessary Nix build and
+        # makes the PRoot fallback more reliable on restricted CI hosts.
+        if [[ -z "${NP_GIT:-}" ]] && command -v git >/dev/null 2>&1; then
+            NP_GIT=$(command -v git)
+            export NP_GIT
+        fi
         exec "$RNB_BACKEND_BIN" nix "$@"
         ;;
     *)
