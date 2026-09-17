@@ -19,6 +19,17 @@ case "$RNB_BACKEND" in
                 echo "rootless-nix-bootstrap: Nix profile is missing inside the rootless store" >&2
                 exit 127
             fi
+
+            # nix-user-chroot bind-mounts the managed NVIDIA driver bridge here.
+            # Keep the bridge scoped to the wrapper and its children rather than
+            # modifying the login shell globally.
+            if [ -d /run/opengl-driver/lib ]; then
+                case ":${LD_LIBRARY_PATH:-}:" in
+                    *:/run/opengl-driver/lib:*) ;;
+                    *) export LD_LIBRARY_PATH="/run/opengl-driver/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+                esac
+            fi
+
             exec "$real_nix" "$@"
         ' rootless-nix "$@"
         ;;
