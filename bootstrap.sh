@@ -89,13 +89,37 @@ esac
 
 mkdir -p "$bin_dir" "$config_dir" "$share_dir/bin" "$store_root"
 store_root=$(cd "$store_root" && pwd -P)
+state_file="$config_dir/state.env"
 
-profile_preexisted=0
-defexpr_preexisted=0
-channels_preexisted=0
-[[ -e "$HOME/.nix-profile" || -L "$HOME/.nix-profile" ]] && profile_preexisted=1
-[[ -e "$HOME/.nix-defexpr" || -L "$HOME/.nix-defexpr" ]] && defexpr_preexisted=1
-[[ -e "$HOME/.nix-channels" || -L "$HOME/.nix-channels" ]] && channels_preexisted=1
+# These flags describe whether the upstream Nix profile artifacts existed
+# before this bootstrap first managed the installation. Preserve that original
+# ownership information across idempotent bootstrap reruns instead of treating
+# files created by the first run as user-preexisting files on later runs.
+profile_preexisted=''
+defexpr_preexisted=''
+channels_preexisted=''
+if [[ -r "$state_file" ]]; then
+    # shellcheck disable=SC1090
+    source "$state_file"
+    if [[ "${RNB_MANAGED:-0}" == 1 ]]; then
+        case "${RNB_PROFILE_PREEXISTED:-}" in 0|1) profile_preexisted=$RNB_PROFILE_PREEXISTED ;; esac
+        case "${RNB_DEFEXPR_PREEXISTED:-}" in 0|1) defexpr_preexisted=$RNB_DEFEXPR_PREEXISTED ;; esac
+        case "${RNB_CHANNELS_PREEXISTED:-}" in 0|1) channels_preexisted=$RNB_CHANNELS_PREEXISTED ;; esac
+    fi
+fi
+
+if [[ -z "$profile_preexisted" ]]; then
+    profile_preexisted=0
+    [[ -e "$HOME/.nix-profile" || -L "$HOME/.nix-profile" ]] && profile_preexisted=1
+fi
+if [[ -z "$defexpr_preexisted" ]]; then
+    defexpr_preexisted=0
+    [[ -e "$HOME/.nix-defexpr" || -L "$HOME/.nix-defexpr" ]] && defexpr_preexisted=1
+fi
+if [[ -z "$channels_preexisted" ]]; then
+    channels_preexisted=0
+    [[ -e "$HOME/.nix-channels" || -L "$HOME/.nix-channels" ]] && channels_preexisted=1
+fi
 
 case "$backend" in
     user-chroot)
@@ -124,7 +148,6 @@ case "$backend" in
         ;;
 esac
 
-state_file="$config_dir/state.env"
 rnb_write_state "$state_file" "$backend" "$store_root" "$backend_bin" "$bin_dir"
 printf 'RNB_PROFILE_PREEXISTED=%q\nRNB_DEFEXPR_PREEXISTED=%q\nRNB_CHANNELS_PREEXISTED=%q\n' \
     "$profile_preexisted" "$defexpr_preexisted" "$channels_preexisted" >> "$state_file"
