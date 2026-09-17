@@ -52,8 +52,19 @@ if ((purge_store)); then
         [[ "${RNB_CHANNELS_PREEXISTED:-1}" == 0 ]] && rm -rf -- "$HOME/.nix-channels"
         echo "Purged managed Nix store: $RNB_STORE_ROOT"
     elif [[ "$RNB_BACKEND" == portable ]]; then
-        rm -rf -- "$RNB_STORE_ROOT/.nix-portable"
-        echo "Purged nix-portable state under: $RNB_STORE_ROOT/.nix-portable"
+        portable_root="$RNB_STORE_ROOT/.nix-portable"
+        if [[ -d "$portable_root" ]]; then
+            echo "Preparing nix-portable state for removal: $portable_root"
+            if ! find "$portable_root" -type d -exec chmod u+w -- {} +; then
+                echo "Failed to make nix-portable directories writable; state was preserved." >&2
+                exit 1
+            fi
+            if ! rm -rf -- "$portable_root"; then
+                echo "Failed to remove nix-portable state; state was preserved." >&2
+                exit 1
+            fi
+        fi
+        echo "Purged nix-portable state under: $portable_root"
     fi
 fi
 
