@@ -22,19 +22,16 @@ jobs:
       - name: ShellCheck
         run: shellcheck bootstrap.sh uninstall.sh doctor.sh versions.sh bin/nix lib/*.sh tests/*.sh
 
-  integration:
-    name: integration (${{ matrix.backend }})
+  integration-user-chroot:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        backend:
-          - user-chroot
-          - portable
     steps:
       - uses: actions/checkout@v4
-      - name: Probe user namespaces
-        if: matrix.backend == 'user-chroot'
-        run: unshare --user --pid true
-      - name: Full install/use/reinstall/uninstall lifecycle
-        run: bash tests/integration.sh "${{ matrix.backend }}"
+      - name: Full user-chroot lifecycle in privileged container
+        run: bash tests/integration-user-chroot-docker.sh
+
+  integration-portable:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full portable lifecycle
+        run: bash tests/integration.sh portable
