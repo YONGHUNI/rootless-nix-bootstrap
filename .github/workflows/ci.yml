@@ -26,8 +26,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Full user-chroot lifecycle in privileged container
-        run: bash tests/integration-user-chroot-docker.sh
+      - name: Allow unprivileged user namespace capabilities on Ubuntu 24.04
+        run: |
+          if [[ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
+            echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          fi
+      - name: Probe user namespaces
+        run: unshare --user --pid true
+      - name: Full user-chroot lifecycle
+        run: bash tests/integration.sh user-chroot
 
   integration-portable:
     runs-on: ubuntu-latest
