@@ -36,6 +36,29 @@ rnb_install_user_chroot_binary() {
     printf '%s\n' "$dest"
 }
 
+rnb_user_chroot_runtime_works() {
+    local backend_bin=$1 store_root=$2 store_parent probe_root rc
+
+    store_parent=$(dirname "$store_root")
+    mkdir -p "$store_parent" || return 1
+    store_parent=$(cd "$store_parent" && pwd -P) || return 1
+
+    probe_root=$(mktemp -d "$store_parent/.rnb-probe.XXXXXX") || return 1
+    chmod 0755 "$probe_root" || {
+        rm -rf -- "$probe_root"
+        return 1
+    }
+
+    if "$backend_bin" "$probe_root" bash -c 'true' >/dev/null 2>&1; then
+        rc=0
+    else
+        rc=$?
+    fi
+
+    rm -rf -- "$probe_root"
+    return "$rc"
+}
+
 rnb_install_nix_in_chroot() {
     local chroot_bin=$1 store_root=$2 nix_version=$3
 
