@@ -93,6 +93,24 @@ if compgen -G "$probe_parent/.rnb-probe.*" >/dev/null; then
     exit 1
 fi
 
+# The compatibility probe must add --root-method chroot while keeping the same
+# temporary-root placement and cleanup semantics.
+cat > "$probe_backend" <<'EOF_PROBE_CHROOT'
+#!/usr/bin/env bash
+[[ "${1:-}" == --root-method ]] || exit 31
+[[ "${2:-}" == chroot ]] || exit 32
+root=$3
+shift 3
+[[ -d "$root" ]] || exit 33
+exec "$@"
+EOF_PROBE_CHROOT
+chmod +x "$probe_backend"
+rnb_user_chroot_runtime_works "$probe_backend" "$probe_parent/.nix" chroot
+if compgen -G "$probe_parent/.rnb-probe.*" >/dev/null; then
+    echo 'chroot runtime probe left a temporary root behind' >&2
+    exit 1
+fi
+
 cat > "$probe_backend" <<'EOF_PROBE_FAIL'
 #!/usr/bin/env bash
 exit 23
