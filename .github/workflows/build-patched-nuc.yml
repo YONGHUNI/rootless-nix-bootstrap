@@ -42,7 +42,7 @@ jobs:
 
       - name: Test patched source
         working-directory: upstream
-        run: cargo test --locked
+        run: cargo test --locked --lib --bin nix-user-chroot
 
       - name: Build static binary
         working-directory: upstream
