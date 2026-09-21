@@ -32,7 +32,7 @@ assert_contains() {
 }
 
 make_state() {
-    local config_home=$1 backend=$2 store_root=$3 backend_bin=$4 bin_dir=$5
+    local config_home=$1 backend=$2 store_root=$3 backend_bin=$4 bin_dir=$5 root_method=${6:-}
     mkdir -p "$config_home/rootless-nix-bootstrap"
     cat > "$config_home/rootless-nix-bootstrap/state.env" <<EOF_STATE
 RNB_BACKEND=$backend
@@ -41,6 +41,9 @@ RNB_BACKEND_BIN=$backend_bin
 RNB_BIN_DIR=$bin_dir
 RNB_MANAGED=1
 EOF_STATE
+    if [[ -n "$root_method" ]]; then
+        printf 'RNB_USER_CHROOT_ROOT_METHOD=%s\n' "$root_method" >> "$config_home/rootless-nix-bootstrap/state.env"
+    fi
 }
 
 # bootstrap CLI surface
@@ -130,6 +133,23 @@ run_capture env HOME="$wrapper_home" XDG_CONFIG_HOME="$wrapper_config" \
 assert_status 0
 assert_contains 'fake-nix:develop -c python analysis.py'
 
+# nix wrapper: chroot compatibility mode adds the explicit root-method flag.
+chroot_backend="$tmp_root/fake-user-chroot-compat"
+cat > "$chroot_backend" <<'EOF_CHROOT_BACKEND'
+#!/usr/bin/env bash
+[[ "${1:-}" == --root-method ]] || exit 41
+[[ "${2:-}" == chroot ]] || exit 42
+shift 2
+shift
+exec "$@"
+EOF_CHROOT_BACKEND
+chmod +x "$chroot_backend"
+make_state "$wrapper_config" user-chroot "$wrapper_home/.nix" "$chroot_backend" "$wrapper_home/bin" chroot
+run_capture env HOME="$wrapper_home" XDG_CONFIG_HOME="$wrapper_config" \
+    "$repo_root/bin/nix" develop -c python analysis.py
+assert_status 0
+assert_contains 'fake-nix:develop -c python analysis.py'
+
 # nix wrapper: portable backend forwards commands, exports NP_LOCATION, and
 # reuses host Git instead of letting nix-portable bootstrap its own copy.
 portable_backend="$tmp_root/fake-portable"
@@ -186,6 +206,7 @@ run_capture env HOME="$doctor_home" XDG_CONFIG_HOME="$doctor_config" PATH="$doct
 assert_status 0
 assert_contains 'Nix evaluator works'
 assert_contains 'flake support works'
+assert_contains 'nix-user-chroot root method: pivot'
 assert_contains 'unprivileged user namespaces available'
 assert_contains 'Nix build sandbox enabled'
 assert_contains 'sandbox fallback disabled'
