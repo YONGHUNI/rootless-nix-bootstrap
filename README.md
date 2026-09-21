@@ -39,7 +39,7 @@ The host stays a normal Linux host until a project explicitly invokes Nix.
 - Bash
 - no root required
 
-The preferred backend is [`nix-user-chroot`](https://github.com/nix-community/nix-user-chroot), which requires unprivileged user namespaces. `nix-portable` is available only as an explicit fallback because its PRoot path can add significant overhead and has weaker host integration.
+The preferred backend is [`nix-user-chroot`](https://github.com/nix-community/nix-user-chroot), which requires unprivileged user namespaces. The bootstrap first uses the unmodified upstream binary and its normal `pivot_root` path. If that runtime probe fails while user namespaces are available, it can use a pinned compatibility build that keeps the same namespace/bind-mount design but switches the final root transition to `chroot`. `nix-portable` remains an explicit last-resort fallback because its PRoot path can add significant overhead and has weaker host integration.
 
 ## Install
 
@@ -84,19 +84,21 @@ Do not place a long-lived store on purgeable scratch storage unless that is inte
 
 ## Backend selection
 
-Automatic mode chooses `nix-user-chroot` only when an unprivileged user namespace probe succeeds:
+Automatic mode first checks unprivileged user namespaces and then probes the unmodified upstream `nix-user-chroot` binary:
 
 ```bash
 ./bootstrap.sh
 ```
 
-If the host blocks user namespaces, bootstrap stops rather than silently switching to a slower runtime. The optional fallback is explicit:
+On hosts where the upstream runtime works, bootstrap keeps the original binary and invocation unchanged. If that runtime probe fails, bootstrap tries a pinned native compatibility build with `--root-method chroot`. This is intended for HPC/rootfs environments where user and mount namespaces plus bind mounts work but `pivot_root` does not. The selected method is recorded in `state.env` and shown by `rootless-nix-doctor`.
+
+If user namespaces are blocked, or both native root methods fail, bootstrap stops rather than silently switching to a slower runtime. The optional PRoot fallback remains explicit:
 
 ```bash
 ./bootstrap.sh --backend portable
 ```
 
-The current portable fallback is experimental. Its released bundle is older than the preferred backend and PRoot can impose substantial overhead. aarch64 portable fallback is disabled until an asset digest is pinned; aarch64 `nix-user-chroot` is fully supported.
+The current portable fallback is experimental. Its released bundle is older than the preferred backend and PRoot can impose substantial overhead. The chroot compatibility binary is currently pinned for x86_64; aarch64 continues to use the upstream `nix-user-chroot` path unless another fallback is selected explicitly.
 
 ## GPU hosts
 
@@ -177,7 +179,7 @@ The uninstaller removes only the PATH block managed by this project and files re
 
 ## Security / downloads
 
-The preferred `nix-user-chroot` release is version-pinned and verified against the SHA-256 digest published with its GitHub release. Nix itself is installed from a version-specific official Nix release URL. `nix-portable` is version-pinned and enabled only where a digest is explicitly recorded.
+The preferred upstream `nix-user-chroot` release is version-pinned and verified against the SHA-256 digest published with its GitHub release. The optional chroot compatibility binary is built reproducibly from the pinned upstream 2.1.1 commit plus the small source transformation stored in this repository; its release asset is also SHA-256 pinned. Nix itself is installed from a version-specific official Nix release URL. `nix-portable` is version-pinned and enabled only where a digest is explicitly recorded.
 
 ## License
 
