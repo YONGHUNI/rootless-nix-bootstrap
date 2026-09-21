@@ -127,7 +127,7 @@ rnb_install_nix_in_chroot() {
 
     rnb_info "Installing pinned Nix ${nix_version} into the rootless store"
     rnb_run_user_chroot "$chroot_bin" "$store_root" "$root_method" bash -c \
-        'export NIX_INSTALLER_NO_MODIFY_PROFILE=1; curl --fail --location --proto "=https" --tlsv1.2 "https://releases.nixos.org/nix/nix-'"$nix_version"'/install" | sh -s -- --no-daemon --no-modify-profile'
+        'export NIX_INSTALLER_NO_MODIFY_PROFILE=1 NIX_INSTALLER_NO_CHANNEL_ADD=1; curl --fail --location --proto "=https" --tlsv1.2 "https://releases.nixos.org/nix/nix-'"$nix_version"'/install" | sh -s -- --no-daemon --no-modify-profile'
 
     # shellcheck disable=SC2016
     rnb_run_user_chroot "$chroot_bin" "$store_root" "$root_method" bash -c 'test -x "$HOME/.nix-profile/bin/nix"' || \
