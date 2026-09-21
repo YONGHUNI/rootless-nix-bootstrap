@@ -55,6 +55,14 @@ bootstrap
 assert_installed
 
 if [[ "$backend" == user-chroot ]]; then
+    # On ordinary hosts the upstream runtime probe must keep winning. This
+    # guards the existing cloud/Lambda-style path from being replaced by the
+    # compatibility binary.
+    # shellcheck disable=SC1090
+    source "$XDG_CONFIG_HOME/rootless-nix-bootstrap/state.env"
+    [[ "${RNB_USER_CHROOT_ROOT_METHOD:-}" == pivot ]]
+    [[ "$(basename "$RNB_BACKEND_BIN")" == nix-user-chroot ]]
+
     nix config show | grep -q '^sandbox = '
     sandbox=$(nix config show | awk -F ' = ' '$1 == "sandbox" { print $2; exit }')
     if [[ "$sandbox" == true ]]; then
