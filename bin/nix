@@ -9,6 +9,21 @@ STATE_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/rootless-nix-bootstrap/state.env"
 # shellcheck disable=SC1090
 source "$STATE_FILE"
 
+# Reuse the host CA bundle when Nix's own default trust path does not match the
+# host distribution. Keep any explicit user setting untouched.
+if [[ -z "${NIX_SSL_CERT_FILE:-}" ]]; then
+    for cert in \
+        /etc/ssl/certs/ca-certificates.crt \
+        /etc/pki/tls/certs/ca-bundle.crt \
+        /etc/ssl/certs/ca-bundle.crt \
+        /etc/ssl/cert.pem; do
+        if [[ -r "$cert" ]]; then
+            export NIX_SSL_CERT_FILE="$cert"
+            break
+        fi
+    done
+fi
+
 case "$RNB_BACKEND" in
     user-chroot)
         root_method=${RNB_USER_CHROOT_ROOT_METHOD:-pivot}
