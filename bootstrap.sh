@@ -16,6 +16,7 @@ source "$REPO_ROOT/lib/portable.sh"
 source "$REPO_ROOT/lib/gpu.sh"
 
 backend=auto
+user_chroot_root_method=pivot
 store_root="${RNB_STORE_ROOT:-$HOME/.nix}"
 bin_dir="${RNB_BIN_DIR:-$HOME/.local/bin}"
 config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/rootless-nix-bootstrap"
@@ -135,13 +136,26 @@ fi
 
 case "$backend" in
     user-chroot)
+        # First try the unmodified upstream binary and its historical pivot_root
+        # path. Hosts where this already works (for example ordinary cloud GPU
+        # servers) keep exactly the same backend binary and invocation.
         backend_bin=$(rnb_install_user_chroot_binary "$arch" "$share_dir/bin" "$RNB_NIX_USER_CHROOT_VERSION")
-        rnb_info "Probing nix-user-chroot runtime support"
-        if ! rnb_user_chroot_runtime_works "$backend_bin" "$store_root"; then
-            rnb_die "nix-user-chroot runtime probe failed. User namespaces are available, but the backend could not initialize. The host may restrict required mount or namespace operations. Try: ./bootstrap.sh --backend portable"
+        rnb_info "Probing upstream nix-user-chroot runtime support"
+        if rnb_user_chroot_runtime_works "$backend_bin" "$store_root" pivot; then
+            user_chroot_root_method=pivot
+            rnb_ok "Upstream nix-user-chroot runtime probe succeeded"
+        else
+            rnb_warn "Upstream nix-user-chroot runtime probe failed; trying native chroot compatibility mode"
+            compat_bin=$(rnb_install_user_chroot_compat_binary "$arch" "$share_dir/bin" "$RNB_NIX_USER_CHROOT_COMPAT_VERSION")
+            if rnb_user_chroot_runtime_works "$compat_bin" "$store_root" chroot; then
+                backend_bin=$compat_bin
+                user_chroot_root_method=chroot
+                rnb_ok "nix-user-chroot chroot compatibility probe succeeded"
+            else
+                rnb_die "nix-user-chroot failed with both the upstream pivot_root path and the native chroot compatibility path. Try: ./bootstrap.sh --backend portable"
+            fi
         fi
-        rnb_ok "nix-user-chroot runtime probe succeeded"
-        rnb_install_nix_in_chroot "$backend_bin" "$store_root" "$RNB_NIX_VERSION"
+        rnb_install_nix_in_chroot "$backend_bin" "$store_root" "$RNB_NIX_VERSION" "$user_chroot_root_method"
         mkdir -p "$store_root/etc/nix"
         install -m 0644 "$REPO_ROOT/config/nix.conf" "$store_root/etc/nix/nix.conf"
         fs_type=$(rnb_filesystem_type "$store_root")
@@ -161,6 +175,9 @@ case "$backend" in
 esac
 
 rnb_write_state "$state_file" "$backend" "$store_root" "$backend_bin" "$bin_dir"
+if [[ "$backend" == user-chroot ]]; then
+    printf 'RNB_USER_CHROOT_ROOT_METHOD=%q\n' "$user_chroot_root_method" >> "$state_file"
+fi
 printf 'RNB_PROFILE_PREEXISTED=%q\nRNB_DEFEXPR_PREEXISTED=%q\nRNB_CHANNELS_PREEXISTED=%q\nRNB_NIX_STATE_DIR=%q\nRNB_NIX_STATE_PREEXISTED=%q\n' \
     "$profile_preexisted" "$defexpr_preexisted" "$channels_preexisted" "$managed_nix_state_dir" "$nix_state_preexisted" >> "$state_file"
 install -m 0755 "$REPO_ROOT/bin/nix" "$bin_dir/nix"
@@ -200,6 +217,9 @@ if [[ "$backend" == user-chroot ]]; then
 fi
 
 printf '\nInstalled rootless Nix backend: %s\n' "$backend"
+if [[ "$backend" == user-chroot ]]; then
+    printf 'Root method: %s\n' "$user_chroot_root_method"
+fi
 printf 'Wrapper: %s/nix\n' "$bin_dir"
 printf 'Store/location: %s\n' "$store_root"
 printf '\nNext: cd <project> && nix develop\n'

@@ -11,9 +11,21 @@ source "$STATE_FILE"
 
 case "$RNB_BACKEND" in
     user-chroot)
+        root_method=${RNB_USER_CHROOT_ROOT_METHOD:-pivot}
+        case "$root_method" in
+            pivot) backend_root_args=() ;;
+            chroot) backend_root_args=(--root-method chroot) ;;
+            *)
+                echo "rootless-nix-bootstrap: unknown user-chroot root method: $root_method" >&2
+                exit 2
+                ;;
+        esac
+
+        # For pivot, backend_root_args is empty, so the upstream invocation is
+        # byte-for-byte equivalent at the argument level to the historical path.
         # The single-quoted script is intentionally expanded by the inner Bash.
         # shellcheck disable=SC2016
-        exec "$RNB_BACKEND_BIN" "$RNB_STORE_ROOT" bash -c '
+        exec "$RNB_BACKEND_BIN" "${backend_root_args[@]}" "$RNB_STORE_ROOT" bash -c '
             real_nix="$HOME/.nix-profile/bin/nix"
             if [ ! -x "$real_nix" ]; then
                 echo "rootless-nix-bootstrap: Nix profile is missing inside the rootless store" >&2

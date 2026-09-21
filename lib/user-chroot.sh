@@ -36,8 +36,61 @@ rnb_install_user_chroot_binary() {
     printf '%s\n' "$dest"
 }
 
+rnb_install_user_chroot_compat_binary() {
+    local arch=$1 install_dir=$2 version=$3 expected url dest asset
+    mkdir -p "$install_dir"
+
+    case "$arch" in
+        x86_64)
+            asset="nix-user-chroot-bin-${version}-x86_64-unknown-linux-musl"
+            expected=$RNB_NUC_COMPAT_SHA256_X86_64
+            ;;
+        aarch64)
+            expected=$RNB_NUC_COMPAT_SHA256_AARCH64
+            [[ -n "$expected" ]] || rnb_die "The chroot compatibility build is not enabled for aarch64"
+            asset="nix-user-chroot-bin-${version}-aarch64-unknown-linux-musl"
+            ;;
+        *) rnb_die "Unsupported architecture: $arch" ;;
+    esac
+
+    dest="$install_dir/nix-user-chroot-compat"
+    url="https://github.com/YONGHUNI/rootless-nix-bootstrap/releases/download/nix-user-chroot-${version}/${asset}"
+
+    if [[ -x "$dest" ]] && [[ "$(rnb_sha256 "$dest")" == "$expected" ]]; then
+        rnb_ok "nix-user-chroot compatibility build ${version} already installed"
+        printf '%s\n' "$dest"
+        return
+    fi
+
+    local tmp
+    tmp=$(mktemp)
+    rnb_info "Downloading nix-user-chroot compatibility build ${version} (${arch})"
+    rnb_download "$url" "$tmp"
+    rnb_verify_sha256 "$tmp" "$expected"
+    install -m 0755 "$tmp" "$dest"
+    rm -f "$tmp"
+    rnb_ok "Installed $dest"
+    printf '%s\n' "$dest"
+}
+
+rnb_run_user_chroot() {
+    local backend_bin=$1 store_root=$2 root_method=$3
+    shift 3
+
+    case "$root_method" in
+        pivot)
+            # Preserve the upstream invocation exactly on hosts where it works.
+            "$backend_bin" "$store_root" "$@"
+            ;;
+        chroot)
+            "$backend_bin" --root-method chroot "$store_root" "$@"
+            ;;
+        *) rnb_die "Unknown nix-user-chroot root method: $root_method" ;;
+    esac
+}
+
 rnb_user_chroot_runtime_works() {
-    local backend_bin=$1 store_root=$2 store_parent probe_root rc
+    local backend_bin=$1 store_root=$2 root_method=${3:-pivot} store_parent probe_root rc
 
     store_parent=$(dirname "$store_root")
     mkdir -p "$store_parent" || return 1
@@ -49,7 +102,7 @@ rnb_user_chroot_runtime_works() {
         return 1
     }
 
-    if "$backend_bin" "$probe_root" bash -c 'true' >/dev/null 2>&1; then
+    if rnb_run_user_chroot "$backend_bin" "$probe_root" "$root_method" bash -c 'true' >/dev/null 2>&1; then
         rc=0
     else
         rc=$?
@@ -60,24 +113,24 @@ rnb_user_chroot_runtime_works() {
 }
 
 rnb_install_nix_in_chroot() {
-    local chroot_bin=$1 store_root=$2 nix_version=$3
+    local chroot_bin=$1 store_root=$2 nix_version=$3 root_method=${4:-pivot}
 
     mkdir -p "$store_root"
     chmod 0755 "$store_root"
 
     # HOME must expand in the inner Bash running inside the chroot.
     # shellcheck disable=SC2016
-    if "$chroot_bin" "$store_root" bash -c 'test -x "$HOME/.nix-profile/bin/nix" && "$HOME/.nix-profile/bin/nix" --version >/dev/null 2>&1'; then
+    if rnb_run_user_chroot "$chroot_bin" "$store_root" "$root_method" bash -c 'test -x "$HOME/.nix-profile/bin/nix" && "$HOME/.nix-profile/bin/nix" --version >/dev/null 2>&1'; then
         rnb_ok "Nix is already installed in the rootless store"
         return
     fi
 
     rnb_info "Installing pinned Nix ${nix_version} into the rootless store"
-    "$chroot_bin" "$store_root" bash -c \
+    rnb_run_user_chroot "$chroot_bin" "$store_root" "$root_method" bash -c \
         'export NIX_INSTALLER_NO_MODIFY_PROFILE=1; curl --fail --location --proto "=https" --tlsv1.2 "https://releases.nixos.org/nix/nix-'"$nix_version"'/install" | sh -s -- --no-daemon --no-modify-profile'
 
     # shellcheck disable=SC2016
-    "$chroot_bin" "$store_root" bash -c 'test -x "$HOME/.nix-profile/bin/nix"' || \
+    rnb_run_user_chroot "$chroot_bin" "$store_root" "$root_method" bash -c 'test -x "$HOME/.nix-profile/bin/nix"' || \
         rnb_die "Nix installation completed but ~/.nix-profile/bin/nix was not found"
 }
 
