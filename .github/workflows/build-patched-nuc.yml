@@ -1,0 +1,73 @@
+name: Build patched nix-user-chroot
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - sapelo-chroot-fallback
+    paths:
+      - patches/nix-user-chroot-2.1.1-chroot.patch
+      - .github/workflows/build-patched-nuc.yml
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM_COMMIT: 5d20385cb95382d742e3c4fd481d9d21fada39ef
+  PATCHED_VERSION: 2.1.1-rnb1
+  RELEASE_TAG: nix-user-chroot-2.1.1-rnb1
+  TARGET: x86_64-unknown-linux-musl
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out pinned upstream source
+        run: |
+          git clone https://github.com/nix-community/nix-user-chroot.git upstream
+          git -C upstream checkout "$UPSTREAM_COMMIT"
+
+      - name: Apply chroot root-method patch
+        run: git -C upstream apply "$GITHUB_WORKSPACE/patches/nix-user-chroot-2.1.1-chroot.patch"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - name: Test patched source
+        working-directory: upstream
+        run: cargo test --locked
+
+      - name: Build static binary
+        working-directory: upstream
+        run: cargo build --release --locked --target "$TARGET"
+
+      - name: Package and checksum
+        run: |
+          asset="nix-user-chroot-bin-${PATCHED_VERSION}-${TARGET}"
+          strip "upstream/target/${TARGET}/release/nix-user-chroot"
+          install -m 0755 "upstream/target/${TARGET}/release/nix-user-chroot" "$asset"
+          sha256sum "$asset" | tee "$asset.sha256"
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: patched-nix-user-chroot
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+
+      - name: Publish pinned fallback release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --title "nix-user-chroot $PATCHED_VERSION" \
+              --notes "Pinned nix-user-chroot 2.1.1 plus the root-method patch in this repository. The default pivot behaviour is unchanged; --root-method chroot is intended only for hosts where pivot_root is unavailable."
+          fi
+          gh release upload "$RELEASE_TAG" "$ASSET" "$ASSET.sha256" --clobber
