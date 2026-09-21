@@ -51,6 +51,12 @@ else
 fi
 
 if [[ "$RNB_BACKEND" == user-chroot ]]; then
+    root_method=${RNB_USER_CHROOT_ROOT_METHOD:-pivot}
+    case "$root_method" in
+        pivot|chroot) check_ok "nix-user-chroot root method: $root_method" ;;
+        *) check_fail "unknown nix-user-chroot root method: $root_method" ;;
+    esac
+
     if command -v unshare >/dev/null 2>&1 && unshare --user --pid true >/dev/null 2>&1; then
         check_ok "unprivileged user namespaces available"
     else
