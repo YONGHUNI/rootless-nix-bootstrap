@@ -5,9 +5,9 @@ on:
   push:
     branches:
       - main
-      - sapelo-chroot-fallback
+      - sapelo-chroot-fallback-v2
     paths:
-      - patches/nix-user-chroot-2.1.1-chroot.patch
+      - patches/patch_nix_user_chroot.py
       - .github/workflows/build-patched-nuc.yml
 
 permissions:
@@ -31,7 +31,10 @@ jobs:
           git -C upstream checkout "$UPSTREAM_COMMIT"
 
       - name: Apply chroot root-method patch
-        run: git -C upstream apply "$GITHUB_WORKSPACE/patches/nix-user-chroot-2.1.1-chroot.patch"
+        run: python3 patches/patch_nix_user_chroot.py
+
+      - name: Show source delta
+        run: git -C upstream diff --check && git -C upstream diff
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -39,7 +42,7 @@ jobs:
 
       - name: Test patched source
         working-directory: upstream
-        run: cargo test --locked
+        run: cargo test --locked --lib --bin nix-user-chroot
 
       - name: Build static binary
         working-directory: upstream
@@ -68,6 +71,6 @@ jobs:
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --title "nix-user-chroot $PATCHED_VERSION" \
-              --notes "Pinned nix-user-chroot 2.1.1 plus the root-method patch in this repository. The default pivot behaviour is unchanged; --root-method chroot is intended only for hosts where pivot_root is unavailable."
+              --notes "Pinned nix-user-chroot 2.1.1 plus the root-method compatibility patch in this repository. The default pivot behavior is unchanged; --root-method chroot is used only on hosts where the upstream runtime probe fails."
           fi
           gh release upload "$RELEASE_TAG" "$ASSET" "$ASSET.sha256" --clobber
