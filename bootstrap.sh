@@ -245,5 +245,7 @@ if ((path_changed)); then
     printf 'Open a new Bash shell (or run: source ~/.bashrc) before using nix elsewhere.\n'
 elif ((path_shell_managed_elsewhere)); then
     printf 'Shell configuration was left untouched because ~/.bashrc is symlink-managed.\n'
+elif ((path_shell_needs_attention)); then
+    printf 'Shell configuration was left untouched; add the wrapper directory to PATH manually.\n'
 fi
 printf 'Diagnostics: rootless-nix-doctor\n'
