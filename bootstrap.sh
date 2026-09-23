@@ -185,28 +185,35 @@ install -m 0755 "$REPO_ROOT/doctor.sh" "$bin_dir/rootless-nix-doctor"
 
 path_changed=0
 path_shell_managed_elsewhere=0
+path_shell_needs_attention=0
 if ! rnb_path_contains "$bin_dir"; then
     bashrc="$HOME/.bashrc"
 
-    # A symlinked shell rc file is commonly owned by a dotfiles manager
-    # (Home Manager, GNU Stow, a Git checkout, etc.). Writing through the
-    # symlink would dirty or mutate that external configuration repository.
-    # Leave it untouched and rely on the owner of the symlink to manage PATH.
-    if [[ -L "$bashrc" ]]; then
-        path_shell_managed_elsewhere=1
-        rnb_warn "Not modifying symlink-managed $bashrc; ensure $bin_dir is added to PATH by your shell configuration"
-    else
-        touch "$bashrc"
-        if ! grep -Fq '# >>> rootless-nix-bootstrap PATH >>>' "$bashrc"; then
-            cat >> "$bashrc" <<EOF_PATH
-
-# >>> rootless-nix-bootstrap PATH >>>
-export PATH="$bin_dir:\$PATH"
-# <<< rootless-nix-bootstrap PATH <<<
-EOF_PATH
+    # Shell startup files can be owned by a dotfiles manager or be special
+    # filesystem objects. Mutate only an ordinary regular file that has either
+    # no bootstrap markers or a complete bootstrap-managed block.
+    path_action=$(rnb_add_bashrc_path_block "$bashrc" "$bin_dir")
+    case "$path_action" in
+        added)
             path_changed=1
-        fi
-    fi
+            ;;
+        present) ;;
+        symlink)
+            path_shell_managed_elsewhere=1
+            rnb_warn "Not modifying symlink-managed $bashrc; ensure $bin_dir is added to PATH by your shell configuration"
+            ;;
+        unsupported)
+            path_shell_needs_attention=1
+            rnb_warn "Not modifying non-regular $bashrc; ensure $bin_dir is added to PATH by your shell configuration"
+            ;;
+        malformed)
+            path_shell_needs_attention=1
+            rnb_warn "Not modifying $bashrc because its rootless-nix-bootstrap PATH markers are malformed; repair them or manage PATH manually"
+            ;;
+        *)
+            rnb_die "Failed to update $bashrc"
+            ;;
+    esac
 fi
 
 export PATH="$bin_dir:$PATH"
@@ -238,5 +245,7 @@ if ((path_changed)); then
     printf 'Open a new Bash shell (or run: source ~/.bashrc) before using nix elsewhere.\n'
 elif ((path_shell_managed_elsewhere)); then
     printf 'Shell configuration was left untouched because ~/.bashrc is symlink-managed.\n'
+elif ((path_shell_needs_attention)); then
+    printf 'Shell configuration was left untouched; add the wrapper directory to PATH manually.\n'
 fi
 printf 'Diagnostics: rootless-nix-doctor\n'

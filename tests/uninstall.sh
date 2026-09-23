@@ -23,6 +23,10 @@ RNB_NIX_STATE_PREEXISTED=$nix_state_preexisted
 EOF_STATE
     cp "$repo_root/bin/nix" "$home/.local/bin/nix"
     cp "$repo_root/doctor.sh" "$home/.local/bin/rootless-nix-doctor"
+}
+
+write_managed_bashrc() {
+    local home=$1
     cat > "$home/.bashrc" <<EOF_BASHRC
 before
 # >>> rootless-nix-bootstrap PATH >>>
@@ -42,6 +46,7 @@ state_file="$config/rootless-nix-bootstrap/state.env"
 mkdir -p "$store/store/fake-package/bin"
 touch "$store/store/fake-package/bin/tool"
 write_state "$home" "$config" "$store"
+write_managed_bashrc "$home"
 env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
 [[ -d "$store" ]]
 [[ ! -e "$home/.local/bin/nix" ]]
@@ -80,6 +85,7 @@ ln -s profile-1-link "$nix_state/profiles/profile"
 ln -s /nix/store/fake-user-environment "$nix_state/profiles/profile-1-link"
 chmod -R a-w "$store/store/fake-package"
 write_state "$home" "$config" "$store"
+write_managed_bashrc "$home"
 env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh" --purge-store
 [[ ! -e "$store" ]]
 [[ ! -e "$home/.nix-profile" ]]
@@ -97,6 +103,7 @@ nix_state="$home/.local/state/nix"
 mkdir -p "$store/store/fake-package" "$nix_state"
 touch "$nix_state/keep-me"
 write_state "$home" "$config" "$store" 1 1
+write_managed_bashrc "$home"
 env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh" --purge-store
 [[ -e "$nix_state/keep-me" ]]
 
@@ -106,6 +113,7 @@ config="$tmp_root/unmanaged-config"
 store="$home/.nix"
 mkdir -p "$store/store/keep-me"
 write_state "$home" "$config" "$store" 0
+write_managed_bashrc "$home"
 set +e
 env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh" --purge-store >/dev/null 2>&1
 rc=$?
@@ -122,6 +130,7 @@ store="$home/.nix"
 mockbin="$tmp_root/retry-mockbin"
 mkdir -p "$store/store/fake-package" "$mockbin"
 write_state "$home" "$config" "$store"
+write_managed_bashrc "$home"
 cat > "$mockbin/chmod" <<'EOF_CHMOD'
 #!/usr/bin/env bash
 exit 1
@@ -139,23 +148,137 @@ set -e
 [[ -e "$home/.local/bin/rootless-nix-doctor" ]]
 
 # A symlink-managed .bashrc must never be rewritten through the symlink.
+# Set up bootstrap state first so the test helper itself cannot mutate the target.
 home="$tmp_root/symlink-bashrc-home"
 config="$tmp_root/symlink-bashrc-config"
 store="$home/.nix"
 dotfiles="$tmp_root/dotfiles"
 mkdir -p "$home" "$dotfiles" "$store/store/fake-package"
+write_state "$home" "$config" "$store"
 cat > "$dotfiles/bashrc" <<'EOF_DOT_BASHRC'
 managed-by-dotfiles
 # >>> rootless-nix-bootstrap PATH >>>
 export PATH="/example/.local/bin:$PATH"
 # <<< rootless-nix-bootstrap PATH <<<
 EOF_DOT_BASHRC
+cp "$dotfiles/bashrc" "$dotfiles/bashrc.expected"
 ln -s "$dotfiles/bashrc" "$home/.bashrc"
+env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
+cmp -s "$dotfiles/bashrc.expected" "$dotfiles/bashrc"
+[[ -L "$home/.bashrc" ]]
+
+# A dangling symlink is still externally managed and must remain untouched.
+home="$tmp_root/dangling-bashrc-home"
+config="$tmp_root/dangling-bashrc-config"
+store="$home/.nix"
+mkdir -p "$home" "$store/store/fake-package"
+write_state "$home" "$config" "$store"
+ln -s "$tmp_root/does-not-exist/bashrc" "$home/.bashrc"
+link_before=$(readlink "$home/.bashrc")
+env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
+[[ -L "$home/.bashrc" ]]
+[[ "$(readlink "$home/.bashrc")" == "$link_before" ]]
+
+# Missing .bashrc is a valid state; uninstall must not create one.
+home="$tmp_root/missing-bashrc-home"
+config="$tmp_root/missing-bashrc-config"
+store="$home/.nix"
+mkdir -p "$home" "$store/store/fake-package"
 write_state "$home" "$config" "$store"
 env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
-grep -qx 'managed-by-dotfiles' "$dotfiles/bashrc"
-grep -Fq 'rootless-nix-bootstrap PATH' "$dotfiles/bashrc"
-[[ -L "$home/.bashrc" ]]
+[[ ! -e "$home/.bashrc" && ! -L "$home/.bashrc" ]]
+
+# An ordinary .bashrc with no managed block must remain byte-for-byte unchanged.
+home="$tmp_root/unmanaged-bashrc-home"
+config="$tmp_root/unmanaged-bashrc-config"
+store="$home/.nix"
+mkdir -p "$home" "$store/store/fake-package"
+write_state "$home" "$config" "$store"
+printf 'export EDITOR=vim\ncustom-line\n' > "$home/.bashrc"
+cp "$home/.bashrc" "$home/.bashrc.expected"
+env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
+cmp -s "$home/.bashrc.expected" "$home/.bashrc"
+
+# Multiple complete managed blocks are safe to remove while preserving all
+# surrounding user content.
+home="$tmp_root/multiple-block-home"
+config="$tmp_root/multiple-block-config"
+store="$home/.nix"
+mkdir -p "$home" "$store/store/fake-package"
+write_state "$home" "$config" "$store"
+cat > "$home/.bashrc" <<'EOF_MULTI'
+before
+# >>> rootless-nix-bootstrap PATH >>>
+first-managed-line
+# <<< rootless-nix-bootstrap PATH <<<
+middle
+# >>> rootless-nix-bootstrap PATH >>>
+second-managed-line
+# <<< rootless-nix-bootstrap PATH <<<
+after
+EOF_MULTI
+env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
+cat > "$home/.bashrc.expected" <<'EOF_MULTI_EXPECTED'
+before
+middle
+after
+EOF_MULTI_EXPECTED
+cmp -s "$home/.bashrc.expected" "$home/.bashrc"
+
+# Malformed marker layouts are ambiguous. Uninstall must not guess where the
+# managed region ends and therefore must leave the file untouched.
+for malformed_case in missing-end orphan-end nested-start; do
+    home="$tmp_root/malformed-$malformed_case-home"
+    config="$tmp_root/malformed-$malformed_case-config"
+    store="$home/.nix"
+    mkdir -p "$home" "$store/store/fake-package"
+    write_state "$home" "$config" "$store"
+
+    case "$malformed_case" in
+        missing-end)
+            cat > "$home/.bashrc" <<'EOF_MALFORMED'
+before
+# >>> rootless-nix-bootstrap PATH >>>
+managed-looking-line
+user-line-after-missing-end
+EOF_MALFORMED
+            ;;
+        orphan-end)
+            cat > "$home/.bashrc" <<'EOF_MALFORMED'
+before
+# <<< rootless-nix-bootstrap PATH <<<
+after
+EOF_MALFORMED
+            ;;
+        nested-start)
+            cat > "$home/.bashrc" <<'EOF_MALFORMED'
+before
+# >>> rootless-nix-bootstrap PATH >>>
+managed-looking-line
+# >>> rootless-nix-bootstrap PATH >>>
+nested-looking-line
+# <<< rootless-nix-bootstrap PATH <<<
+after
+EOF_MALFORMED
+            ;;
+    esac
+
+    cp "$home/.bashrc" "$home/.bashrc.expected"
+    env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
+    cmp -s "$home/.bashrc.expected" "$home/.bashrc"
+done
+
+# Non-regular .bashrc objects are not shell files owned by this bootstrap and
+# must not be removed or traversed.
+home="$tmp_root/directory-bashrc-home"
+config="$tmp_root/directory-bashrc-config"
+store="$home/.nix"
+mkdir -p "$home/.bashrc" "$store/store/fake-package"
+write_state "$home" "$config" "$store"
+touch "$home/.bashrc/keep-me"
+env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
+[[ -d "$home/.bashrc" ]]
+[[ -e "$home/.bashrc/keep-me" ]]
 
 # Invalid uninstall options are rejected rather than silently ignored.
 set +e

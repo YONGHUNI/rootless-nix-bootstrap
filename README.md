@@ -49,7 +49,7 @@ cd rootless-nix-bootstrap
 ./bootstrap.sh
 ```
 
-If `~/.local/bin` is not already on `PATH`, bootstrap adds one small managed block to a regular `~/.bashrc`. If `~/.bashrc` is a symlink (for example, managed by a dotfiles repository, GNU Stow, or Home Manager), bootstrap deliberately leaves it untouched and asks that shell configuration to own the PATH entry instead. It does not automatically enter a Nix shell at login.
+If `~/.local/bin` is not already on `PATH`, bootstrap adds one small managed block to an ordinary regular `~/.bashrc`. Symlinks (including dangling symlinks), directories or other non-regular objects are never followed or replaced; this avoids mutating shell configuration owned by a dotfiles repository, GNU Stow, Home Manager, or another tool. If bootstrap finds malformed rootless-nix-bootstrap PATH markers, it also leaves the file unchanged rather than guessing which user lines belong to the managed block. In these cases it asks you to manage the PATH entry explicitly. It does not automatically enter a Nix shell at login.
 
 The upstream Nix installer may print a generic suggestion to source `~/.nix-profile/etc/profile.d/nix.sh`. Do **not** add that line when using this bootstrap; the wrapper intentionally exposes Nix only when the `nix` command is invoked.
 
@@ -179,7 +179,7 @@ Explicitly remove the managed store as well:
 ./uninstall.sh --purge-store
 ```
 
-The uninstaller removes only the PATH block managed by this project and files recorded as bootstrap-managed.
+The uninstaller removes only complete PATH blocks managed by this project and files recorded as bootstrap-managed. Symlinked or non-regular `~/.bashrc` objects, files without a managed block, and files with malformed managed markers are left untouched.
 
 ## Security / downloads
 
