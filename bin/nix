@@ -9,6 +9,71 @@ STATE_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/rootless-nix-bootstrap/state.env"
 # shellcheck disable=SC1090
 source "$STATE_FILE"
 
+# A node-local Nix cache avoids sharing Nix's SQLite fetch/eval caches across
+# different Slurm compute nodes. NIX_CACHE_HOME is Nix-specific, unlike
+# XDG_CACHE_HOME, so this does not relocate caches for Pixi, Python, Hugging
+# Face, or other tools launched from a Nix shell.
+#
+# Explicit user intent always wins. RNB_NIX_CACHE_HOME is an optional
+# rootless-nix-bootstrap-specific override. Otherwise, Slurm jobs choose a
+# node-local location automatically while non-Slurm use keeps Nix's default
+# cache location.
+rnb_configure_nix_cache() {
+    local cache_home='' old_umask
+
+    [[ -n "${NIX_CACHE_HOME:-}" ]] && return 0
+
+    if [[ -n "${RNB_NIX_CACHE_HOME:-}" ]]; then
+        cache_home=$RNB_NIX_CACHE_HOME
+    elif [[ -n "${SLURM_JOB_ID:-}" ]]; then
+        case "$RNB_STORE_ROOT" in
+            /tmp/*|/var/tmp/*)
+                # When the physical store already lives on node-local tmp
+                # storage (for example Sapelo2 /lscratch -> /tmp/lscratch),
+                # keep the cache beside it so repeated jobs on that node can
+                # reuse the cache without crossing the shared home filesystem.
+                cache_home="$(dirname "$RNB_STORE_ROOT")/.cache/nix"
+                ;;
+            *)
+                if [[ -n "${SLURM_TMPDIR:-}" && -d "$SLURM_TMPDIR" && -w "$SLURM_TMPDIR" ]]; then
+                    cache_home="$SLURM_TMPDIR/rootless-nix-bootstrap/nix"
+                else
+                    cache_home="/tmp/rootless-nix-bootstrap-${UID}/nix"
+                fi
+                ;;
+        esac
+    else
+        return 0
+    fi
+
+    old_umask=$(umask)
+    umask 077
+    if ! mkdir -p "$cache_home"; then
+        umask "$old_umask"
+        echo "rootless-nix-bootstrap: cannot create Nix cache directory: $cache_home" >&2
+        exit 1
+    fi
+    umask "$old_umask"
+
+    if [[ ! -O "$cache_home" ]]; then
+        echo "rootless-nix-bootstrap: refusing Nix cache directory not owned by the current user: $cache_home" >&2
+        exit 1
+    fi
+
+    export NIX_CACHE_HOME="$cache_home"
+}
+
+if [[ "$RNB_BACKEND" == user-chroot && ! -d "$RNB_STORE_ROOT" ]]; then
+    cat >&2 <<EOF_STORE
+rootless-nix-bootstrap: the configured rootless Nix store is not initialized on this node:
+  $RNB_STORE_ROOT
+Run bootstrap.sh on the target compute node/allocation before invoking nix.
+EOF_STORE
+    exit 127
+fi
+
+rnb_configure_nix_cache
+
 # Reuse the host CA bundle when Nix's own default trust path does not match the
 # host distribution. Keep any explicit user setting untouched.
 if [[ -z "${NIX_SSL_CERT_FILE:-}" ]]; then
