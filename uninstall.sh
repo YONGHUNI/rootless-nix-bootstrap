@@ -81,18 +81,24 @@ for f in "$bin_dir/nix" "$bin_dir/rootless-nix-doctor"; do
     fi
 done
 
-if [[ -L "$HOME/.bashrc" ]]; then
-    echo "Leaving symlink-managed $HOME/.bashrc untouched." >&2
-elif [[ -f "$HOME/.bashrc" ]]; then
-    tmp=$(mktemp)
-    awk '
-        /^# >>> rootless-nix-bootstrap PATH >>>$/ { skip=1; next }
-        /^# <<< rootless-nix-bootstrap PATH <<</ { skip=0; next }
-        !skip { print }
-    ' "$HOME/.bashrc" > "$tmp"
-    cat "$tmp" > "$HOME/.bashrc"
-    rm -f "$tmp"
-fi
+bashrc="$HOME/.bashrc"
+path_action=$(rnb_remove_bashrc_path_block "$bashrc")
+case "$path_action" in
+    removed|absent) ;;
+    symlink)
+        echo "Leaving symlink-managed $bashrc untouched." >&2
+        ;;
+    unsupported)
+        echo "Leaving non-regular $bashrc untouched." >&2
+        ;;
+    malformed)
+        echo "Leaving $bashrc untouched because its rootless-nix-bootstrap PATH markers are malformed." >&2
+        ;;
+    *)
+        echo "Failed to inspect or update $bashrc; bootstrap state was preserved." >&2
+        exit 1
+        ;;
+esac
 
 rm -rf "$share_dir"
 
