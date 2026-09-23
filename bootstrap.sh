@@ -184,17 +184,28 @@ install -m 0755 "$REPO_ROOT/bin/nix" "$bin_dir/nix"
 install -m 0755 "$REPO_ROOT/doctor.sh" "$bin_dir/rootless-nix-doctor"
 
 path_changed=0
+path_shell_managed_elsewhere=0
 if ! rnb_path_contains "$bin_dir"; then
     bashrc="$HOME/.bashrc"
-    touch "$bashrc"
-    if ! grep -Fq '# >>> rootless-nix-bootstrap PATH >>>' "$bashrc"; then
-        cat >> "$bashrc" <<EOF_PATH
+
+    # A symlinked shell rc file is commonly owned by a dotfiles manager
+    # (Home Manager, GNU Stow, a Git checkout, etc.). Writing through the
+    # symlink would dirty or mutate that external configuration repository.
+    # Leave it untouched and rely on the owner of the symlink to manage PATH.
+    if [[ -L "$bashrc" ]]; then
+        path_shell_managed_elsewhere=1
+        rnb_warn "Not modifying symlink-managed $bashrc; ensure $bin_dir is added to PATH by your shell configuration"
+    else
+        touch "$bashrc"
+        if ! grep -Fq '# >>> rootless-nix-bootstrap PATH >>>' "$bashrc"; then
+            cat >> "$bashrc" <<EOF_PATH
 
 # >>> rootless-nix-bootstrap PATH >>>
 export PATH="$bin_dir:\$PATH"
 # <<< rootless-nix-bootstrap PATH <<<
 EOF_PATH
-        path_changed=1
+            path_changed=1
+        fi
     fi
 fi
 
@@ -225,5 +236,7 @@ printf 'Store/location: %s\n' "$store_root"
 printf '\nNext: cd <project> && nix develop\n'
 if ((path_changed)); then
     printf 'Open a new Bash shell (or run: source ~/.bashrc) before using nix elsewhere.\n'
+elif ((path_shell_managed_elsewhere)); then
+    printf 'Shell configuration was left untouched because ~/.bashrc is symlink-managed.\n'
 fi
 printf 'Diagnostics: rootless-nix-doctor\n'
