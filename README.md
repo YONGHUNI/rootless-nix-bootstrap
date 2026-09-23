@@ -112,6 +112,10 @@ The bootstrap does **not** install CUDA Toolkit, cuDNN, JAX, PyTorch, or other r
 
 On clusters where the home or project filesystem is shared, the physical Nix store can be shared as well. Each compute-node invocation creates its own rootless namespace when the `nix` wrapper runs; the store contents do not need to be reinstalled per node. If the selected store is on NFS, bootstrap detects that case and sets `use-sqlite-wal = false`, as recommended for writable Nix stores on NFS. Filesystem/site policies still matter, especially under concurrent jobs.
 
+For Slurm jobs, the wrapper also isolates **Nix's own user cache** from a shared home directory. It uses Nix's dedicated `NIX_CACHE_HOME` setting rather than changing `XDG_CACHE_HOME`, so caches belonging to Pixi, Python, Hugging Face, and other tools are unaffected. When the configured Nix store already resolves under node-local `/tmp` or `/var/tmp` storage, the cache is placed beside that store; otherwise the wrapper prefers `$SLURM_TMPDIR` and falls back to a user-private directory under `/tmp`. Jobs on the same node can reuse that local Nix cache, while jobs on different nodes do not concurrently write the same SQLite fetch cache in a shared home directory.
+
+Explicit cache choices take precedence: an existing `NIX_CACHE_HOME` is never overridden, and `RNB_NIX_CACHE_HOME=/path` can be used as a bootstrap-specific override. Outside Slurm, Nix keeps its normal cache location. The wrapper also detects a configured node-local store that is absent on the current node and prints a recovery message instead of invoking the backend with a stale path.
+
 Examples:
 
 ```bash
