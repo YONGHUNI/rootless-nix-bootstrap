@@ -77,7 +77,9 @@ for f in "$bin_dir/nix" "$bin_dir/rootless-nix-doctor"; do
     fi
 done
 
-if [[ -f "$HOME/.bashrc" ]]; then
+if [[ -L "$HOME/.bashrc" ]]; then
+    echo "Leaving symlink-managed $HOME/.bashrc untouched." >&2
+elif [[ -f "$HOME/.bashrc" ]]; then
     tmp=$(mktemp)
     awk '
         /^# >>> rootless-nix-bootstrap PATH >>>$/ { skip=1; next }
