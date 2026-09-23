@@ -41,7 +41,7 @@ regular_bashrc="$shell_home/regular"
 printf 'before\nafter\n' > "$regular_bashrc"
 [[ "$(rnb_add_bashrc_path_block "$regular_bashrc" "/example/bin")" == added ]]
 [[ "$(rnb_path_block_state "$regular_bashrc")" == managed ]]
-grep -Fqx 'export PATH="/example/bin:$PATH"' "$regular_bashrc"
+grep -Fqx "export PATH=\"/example/bin:\$PATH\"" "$regular_bashrc"
 [[ "$(rnb_add_bashrc_path_block "$regular_bashrc" "/example/bin")" == present ]]
 [[ "$(grep -Fc "$RNB_PATH_BLOCK_START" "$regular_bashrc")" -eq 1 ]]
 [[ "$(rnb_remove_bashrc_path_block "$regular_bashrc")" == removed ]]
