@@ -138,6 +138,25 @@ set -e
 [[ -e "$home/.local/bin/nix" ]]
 [[ -e "$home/.local/bin/rootless-nix-doctor" ]]
 
+# A symlink-managed .bashrc must never be rewritten through the symlink.
+home="$tmp_root/symlink-bashrc-home"
+config="$tmp_root/symlink-bashrc-config"
+store="$home/.nix"
+dotfiles="$tmp_root/dotfiles"
+mkdir -p "$home" "$dotfiles" "$store/store/fake-package"
+cat > "$dotfiles/bashrc" <<'EOF_DOT_BASHRC'
+managed-by-dotfiles
+# >>> rootless-nix-bootstrap PATH >>>
+export PATH="/example/.local/bin:$PATH"
+# <<< rootless-nix-bootstrap PATH <<<
+EOF_DOT_BASHRC
+ln -s "$dotfiles/bashrc" "$home/.bashrc"
+write_state "$home" "$config" "$store"
+env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh"
+grep -qx 'managed-by-dotfiles' "$dotfiles/bashrc"
+grep -Fq 'rootless-nix-bootstrap PATH' "$dotfiles/bashrc"
+[[ -L "$home/.bashrc" ]]
+
 # Invalid uninstall options are rejected rather than silently ignored.
 set +e
 output=$(env HOME="$home" XDG_CONFIG_HOME="$config" "$repo_root/uninstall.sh" --unknown 2>&1)
