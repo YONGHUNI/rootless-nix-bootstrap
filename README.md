@@ -49,7 +49,7 @@ cd rootless-nix-bootstrap
 ./bootstrap.sh
 ```
 
-If `~/.local/bin` is not already on `PATH`, bootstrap adds one small managed block to `~/.bashrc`. It does not automatically enter a Nix shell at login.
+If `~/.local/bin` is not already on `PATH`, bootstrap adds one small managed block to a regular `~/.bashrc`. If `~/.bashrc` is a symlink (for example, managed by a dotfiles repository, GNU Stow, or Home Manager), bootstrap deliberately leaves it untouched and asks that shell configuration to own the PATH entry instead. It does not automatically enter a Nix shell at login.
 
 The upstream Nix installer may print a generic suggestion to source `~/.nix-profile/etc/profile.d/nix.sh`. Do **not** add that line when using this bootstrap; the wrapper intentionally exposes Nix only when the `nix` command is invoked.
 
