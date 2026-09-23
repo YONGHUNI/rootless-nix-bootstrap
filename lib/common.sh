@@ -42,3 +42,137 @@ rnb_write_state() {
     } > "$file"
     chmod 600 "$file"
 }
+
+RNB_PATH_BLOCK_START='# >>> rootless-nix-bootstrap PATH >>>'
+RNB_PATH_BLOCK_END='# <<< rootless-nix-bootstrap PATH <<<'
+
+# Print one of: absent, managed, malformed.
+# A managed block is valid only when every start marker has one later end marker,
+# blocks do not nest, and no end marker appears outside a block.
+rnb_path_block_state() {
+    local file=$1
+    awk -v start="$RNB_PATH_BLOCK_START" -v end="$RNB_PATH_BLOCK_END" '
+        BEGIN {
+            inside = 0
+            pairs = 0
+            malformed = 0
+        }
+        $0 == start {
+            if (inside) {
+                malformed = 1
+            }
+            inside = 1
+            next
+        }
+        $0 == end {
+            if (!inside) {
+                malformed = 1
+            } else {
+                inside = 0
+                pairs++
+            }
+            next
+        }
+        END {
+            if (inside) {
+                malformed = 1
+            }
+            if (malformed) {
+                print "malformed"
+            } else if (pairs > 0) {
+                print "managed"
+            } else {
+                print "absent"
+            }
+        }
+    ' "$file"
+}
+
+# Ensure the bootstrap PATH block exists in a regular Bash rc file.
+# Print one of: added, present, symlink, unsupported, malformed.
+# Symlinks and non-regular files are deliberately never followed or replaced.
+rnb_add_bashrc_path_block() {
+    local bashrc=$1 bin_dir=$2 state
+
+    if [[ -L "$bashrc" ]]; then
+        printf 'symlink\n'
+        return 0
+    fi
+    if [[ -e "$bashrc" && ! -f "$bashrc" ]]; then
+        printf 'unsupported\n'
+        return 0
+    fi
+
+    touch "$bashrc" || return 1
+    state=$(rnb_path_block_state "$bashrc") || return 1
+    case "$state" in
+        managed)
+            printf 'present\n'
+            ;;
+        malformed)
+            printf 'malformed\n'
+            ;;
+        absent)
+            cat >> "$bashrc" <<EOF_PATH
+
+$RNB_PATH_BLOCK_START
+export PATH="$bin_dir:\$PATH"
+$RNB_PATH_BLOCK_END
+EOF_PATH
+            printf 'added\n'
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Remove only well-formed bootstrap PATH blocks from a regular Bash rc file.
+# Print one of: removed, absent, symlink, unsupported, malformed.
+# Malformed marker layouts are left byte-for-byte untouched rather than guessed.
+rnb_remove_bashrc_path_block() {
+    local bashrc=$1 state tmp
+
+    if [[ -L "$bashrc" ]]; then
+        printf 'symlink\n'
+        return 0
+    fi
+    if [[ ! -e "$bashrc" ]]; then
+        printf 'absent\n'
+        return 0
+    fi
+    if [[ ! -f "$bashrc" ]]; then
+        printf 'unsupported\n'
+        return 0
+    fi
+
+    state=$(rnb_path_block_state "$bashrc") || return 1
+    case "$state" in
+        absent)
+            printf 'absent\n'
+            ;;
+        malformed)
+            printf 'malformed\n'
+            ;;
+        managed)
+            tmp=$(mktemp) || return 1
+            if ! awk -v start="$RNB_PATH_BLOCK_START" -v end="$RNB_PATH_BLOCK_END" '
+                $0 == start { skip = 1; next }
+                $0 == end { skip = 0; next }
+                !skip { print }
+            ' "$bashrc" > "$tmp"; then
+                rm -f "$tmp"
+                return 1
+            fi
+            if ! cat "$tmp" > "$bashrc"; then
+                rm -f "$tmp"
+                return 1
+            fi
+            rm -f "$tmp"
+            printf 'removed\n'
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
