@@ -121,7 +121,7 @@ shift
 exec "$@"
 EOF_BACKEND
 chmod +x "$user_backend"
-mkdir -p "$wrapper_home/.nix-profile/bin"
+mkdir -p "$wrapper_home/.nix" "$wrapper_home/.nix-profile/bin"
 cat > "$wrapper_home/.nix-profile/bin/nix" <<'EOF_REAL_NIX'
 #!/usr/bin/env bash
 printf 'fake-nix:%s\n' "$*"
@@ -132,6 +132,51 @@ run_capture env HOME="$wrapper_home" XDG_CONFIG_HOME="$wrapper_config" \
     "$repo_root/bin/nix" develop -c python analysis.py
 assert_status 0
 assert_contains 'fake-nix:develop -c python analysis.py'
+
+# nix wrapper: Slurm jobs use a Nix-only node-local cache without changing
+# XDG_CACHE_HOME for unrelated tools. An explicit NIX_CACHE_HOME must win.
+cat > "$wrapper_home/.nix-profile/bin/nix" <<'EOF_REAL_NIX_CACHE'
+#!/usr/bin/env bash
+printf 'nix-cache=%s xdg-cache=%s args=%s\n' "${NIX_CACHE_HOME:-}" "${XDG_CACHE_HOME:-}" "$*"
+EOF_REAL_NIX_CACHE
+chmod +x "$wrapper_home/.nix-profile/bin/nix"
+make_state "$wrapper_config" user-chroot "$wrapper_home/.nix" "$user_backend" "$wrapper_home/bin"
+
+run_capture env HOME="$wrapper_home" XDG_CONFIG_HOME="$wrapper_config" \
+    XDG_CACHE_HOME="$tmp_root/shared-xdg-cache" SLURM_JOB_ID=12345 \
+    "$repo_root/bin/nix" develop -c python analysis.py
+assert_status 0
+assert_contains "nix-cache=$(dirname "$wrapper_home/.nix")/.cache/nix"
+assert_contains "xdg-cache=$tmp_root/shared-xdg-cache"
+
+run_capture env HOME="$wrapper_home" XDG_CONFIG_HOME="$wrapper_config" \
+    SLURM_JOB_ID=12345 NIX_CACHE_HOME="$tmp_root/explicit-nix-cache" \
+    "$repo_root/bin/nix" --version
+assert_status 0
+assert_contains "nix-cache=$tmp_root/explicit-nix-cache"
+
+run_capture env HOME="$wrapper_home" XDG_CONFIG_HOME="$wrapper_config" \
+    SLURM_JOB_ID=12345 RNB_NIX_CACHE_HOME="$tmp_root/rnb-nix-cache" \
+    "$repo_root/bin/nix" --version
+assert_status 0
+assert_contains "nix-cache=$tmp_root/rnb-nix-cache"
+
+# Restore the ordinary fake Nix output for the remaining forwarding tests.
+cat > "$wrapper_home/.nix-profile/bin/nix" <<'EOF_REAL_NIX'
+#!/usr/bin/env bash
+printf 'fake-nix:%s\n' "$*"
+EOF_REAL_NIX
+chmod +x "$wrapper_home/.nix-profile/bin/nix"
+
+# A stale node-local store path should fail before invoking the backend and
+# explain how to recover instead of surfacing a backend/runtime panic.
+stale_store="$tmp_root/missing-node-store"
+make_state "$wrapper_config" user-chroot "$stale_store" "$user_backend" "$wrapper_home/bin"
+run_capture env HOME="$wrapper_home" XDG_CONFIG_HOME="$wrapper_config" \
+    SLURM_JOB_ID=12345 "$repo_root/bin/nix" --version
+assert_status 127
+assert_contains 'configured rootless Nix store is not initialized on this node'
+assert_contains 'Run bootstrap.sh on the target compute node/allocation'
 
 # nix wrapper: chroot compatibility mode adds the explicit root-method flag.
 chroot_backend="$tmp_root/fake-user-chroot-compat"
