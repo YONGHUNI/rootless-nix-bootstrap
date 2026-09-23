@@ -32,6 +32,62 @@ source "$state_file"
 [[ "$RNB_BIN_DIR" == "$tmp_root/bin dir" ]]
 [[ "$RNB_MANAGED" == 1 ]]
 
+# Shell PATH block helpers must be conservative around externally managed or
+# ambiguous shell startup files.
+shell_home="$tmp_root/shell-path"
+mkdir -p "$shell_home"
+
+regular_bashrc="$shell_home/regular"
+printf 'before\nafter\n' > "$regular_bashrc"
+[[ "$(rnb_add_bashrc_path_block "$regular_bashrc" "/example/bin")" == added ]]
+[[ "$(rnb_path_block_state "$regular_bashrc")" == managed ]]
+grep -Fqx 'export PATH="/example/bin:$PATH"' "$regular_bashrc"
+[[ "$(rnb_add_bashrc_path_block "$regular_bashrc" "/example/bin")" == present ]]
+[[ "$(grep -Fc "$RNB_PATH_BLOCK_START" "$regular_bashrc")" -eq 1 ]]
+[[ "$(rnb_remove_bashrc_path_block "$regular_bashrc")" == removed ]]
+[[ "$(rnb_path_block_state "$regular_bashrc")" == absent ]]
+grep -qx before "$regular_bashrc"
+grep -qx after "$regular_bashrc"
+
+missing_bashrc="$shell_home/missing"
+[[ "$(rnb_remove_bashrc_path_block "$missing_bashrc")" == absent ]]
+[[ ! -e "$missing_bashrc" ]]
+[[ "$(rnb_add_bashrc_path_block "$missing_bashrc" "/example/bin")" == added ]]
+[[ -f "$missing_bashrc" ]]
+
+symlink_target="$shell_home/symlink-target"
+symlink_bashrc="$shell_home/symlink"
+printf 'managed-elsewhere\n' > "$symlink_target"
+ln -s "$symlink_target" "$symlink_bashrc"
+[[ "$(rnb_add_bashrc_path_block "$symlink_bashrc" "/example/bin")" == symlink ]]
+[[ "$(rnb_remove_bashrc_path_block "$symlink_bashrc")" == symlink ]]
+grep -qx managed-elsewhere "$symlink_target"
+
+dangling_bashrc="$shell_home/dangling"
+ln -s "$shell_home/not-created" "$dangling_bashrc"
+[[ "$(rnb_add_bashrc_path_block "$dangling_bashrc" "/example/bin")" == symlink ]]
+[[ "$(rnb_remove_bashrc_path_block "$dangling_bashrc")" == symlink ]]
+[[ -L "$dangling_bashrc" ]]
+
+directory_bashrc="$shell_home/directory"
+mkdir "$directory_bashrc"
+[[ "$(rnb_add_bashrc_path_block "$directory_bashrc" "/example/bin")" == unsupported ]]
+[[ "$(rnb_remove_bashrc_path_block "$directory_bashrc")" == unsupported ]]
+[[ -d "$directory_bashrc" ]]
+
+malformed_bashrc="$shell_home/malformed"
+cat > "$malformed_bashrc" <<'EOF_MALFORMED_HELPER'
+before
+# >>> rootless-nix-bootstrap PATH >>>
+managed-looking-line
+user-line-without-end-marker
+EOF_MALFORMED_HELPER
+cp "$malformed_bashrc" "$malformed_bashrc.expected"
+[[ "$(rnb_path_block_state "$malformed_bashrc")" == malformed ]]
+[[ "$(rnb_add_bashrc_path_block "$malformed_bashrc" "/example/bin")" == malformed ]]
+[[ "$(rnb_remove_bashrc_path_block "$malformed_bashrc")" == malformed ]]
+cmp -s "$malformed_bashrc.expected" "$malformed_bashrc"
+
 # Current GitHub/Linux architecture must resolve to a supported canonical name.
 arch=$(rnb_detect_arch)
 [[ "$arch" == x86_64 || "$arch" == aarch64 ]]
